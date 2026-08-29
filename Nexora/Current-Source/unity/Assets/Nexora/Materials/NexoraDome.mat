@@ -1,0 +1,72 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: NexoraDome
+  m_Shader: {fileID: 4800000, guid: 21640073a06aa44dc8b307a09bc168e4, type: 3}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Brightness: 1
+    - _CameraAmount: 0
+    - _CameraChromatic: 0
+    - _CameraExposure: 0
+    - _CameraFisheye: 0
+    - _CameraGlitch: 0
+    - _CameraGrayscale: 0
+    - _CameraHueShift: 0
+    - _CameraKaleidoscope: 0
+    - _CameraPixelate: 0
+    - _CameraScanline: 0
+    - _CameraShake: 0
+    - _CameraSplit: 0
+    - _CameraSwirl: 0
+    - _CameraVignette: 0
+    - _Chromatic: 0
+    - _DeformAmplitude: 0
+    - _DeformFrequency: 3
+    - _DeformSpeed: 1
+    - _DstBlend: 10
+    - _Exposure: 0
+    - _FlipX: 0
+    - _FlipY: 0
+    - _Fog: 0
+    - _HueShift: 0
+    - _Kaleidoscope: 0
+    - _Opacity: 1
+    - _Pinch: 0
+    - _Pixelate: 0
+    - _ProjectionMode: 0
+    - _Pulse: 0
+    - _RippleAmount: 0
+    - _RippleFrequency: 8
+    - _RippleSpeed: 1
+    - _Saturation: 1
+    - _Scanline: 0
+    - _SrcBlend: 5
+    - _SwapEyes: 0
+    - _Twist: 0
+    - _Vignette: 0
+    m_Colors:
+    - _CameraTint: {r: 1, g: 1, b: 1, a: 1}
+    - _Tint: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []

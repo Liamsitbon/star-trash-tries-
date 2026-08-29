@@ -1,0 +1,139 @@
+{
+  "$schema": "https://raw.githubusercontent.com/QuestPackageManager/QPM.Package/refs/heads/main/qpm.schema.json",
+  "version": "0.4.0",
+  "sharedDir": "shared",
+  "dependenciesDir": "extern",
+  "info": {
+    "name": "Noodle Extensions",
+    "id": "NoodleExtensions",
+    "version": "1.8.10",
+    "url": null,
+    "additionalData": {
+      "overrideSoName": "libnoodleextensions.so",
+      "cmake": true
+    }
+  },
+  "workspace": {
+    "scripts": {
+      "a2l": [
+        "pwsh ./scripts/addr2line.ps1 libnoodleextensions.so $0"
+      ],
+      "build": [
+        "bash ./scripts/build.sh --release"
+      ],
+      "clean": [
+        "bash ./scripts/build.sh --clean"
+      ],
+      "copy": [
+        "pwsh ./scripts/copy.ps1"
+      ],
+      "copyRelease": [
+        "pwsh ./scripts/copy.ps1 --release"
+      ],
+      "logcat": [
+        "pwsh ./scripts/start-logging.ps1"
+      ],
+      "qmod": [
+        "bash ./scripts/buildQMOD.sh"
+      ],
+      "restart": [
+        "pwsh ./scripts/restart-game.ps1"
+      ],
+      "stack": [
+        "pwsh ./scripts/ndk-stack.ps1"
+      ],
+      "tomb": [
+        "pwsh ./scripts/pull-tombstone.ps1"
+      ],
+      "buildPwsh": [
+        "pwsh ./scripts/build.ps1 -release"
+      ],
+      "cleanPwsh": [
+        "pwsh ./scripts/build.ps1 -clean"
+      ],
+      "sourceZip": [
+        "bash ./scripts/packageSource.sh"
+      ]
+    },
+    "ndk": "^27.3.13750724",
+    "qmodIncludeDirs": [
+      "./build",
+      "./extern/libs"
+    ],
+    "qmodIncludeFiles": [],
+    "qmodOutput": "NoodleExtensions.qmod"
+  },
+  "dependencies": [
+    {
+      "id": "beatsaber-hook",
+      "versionRange": "^6.4.2",
+      "additionalData": {}
+    },
+    {
+      "id": "bs-cordl",
+      "versionRange": "4008.*",
+      "additionalData": {}
+    },
+    {
+      "id": "custom-types",
+      "versionRange": "^0.18.4",
+      "additionalData": {
+        "includeQmod": true
+      }
+    },
+    {
+      "id": "custom-json-data",
+      "versionRange": "^0.24.5",
+      "additionalData": {}
+    },
+    {
+      "id": "config-utils",
+      "versionRange": "2.0.3",
+      "additionalData": {}
+    },
+    {
+      "id": "tracks",
+      "versionRange": "^2.5.4",
+      "additionalData": {}
+    },
+    {
+      "id": "songcore",
+      "versionRange": "^1.1.26",
+      "additionalData": {
+        "includeQmod": true
+      }
+    },
+    {
+      "id": "sombrero",
+      "versionRange": "^0.1.43",
+      "additionalData": {}
+    },
+    {
+      "id": "scotland2",
+      "versionRange": "^0.1.6",
+      "additionalData": {
+        "includeQmod": false
+      }
+    },
+    {
+      "id": "cpp-semver",
+      "versionRange": "^0.1.2",
+      "additionalData": {}
+    },
+    {
+      "id": "paper2_scotland2",
+      "versionRange": "^4.6.4",
+      "additionalData": {}
+    },
+    {
+      "id": "conditional-dependencies",
+      "versionRange": "^0.3.0",
+      "additionalData": {}
+    },
+    {
+      "id": "bsml",
+      "versionRange": "^0.4.55",
+      "additionalData": {}
+    }
+  ]
+}

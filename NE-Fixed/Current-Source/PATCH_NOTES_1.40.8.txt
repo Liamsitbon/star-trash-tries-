@@ -1,0 +1,53 @@
+Noodle Extensions Quest v1.8.0 — Beat Saber 1.40.8 runtime/source upgrade
+
+Loader restoration:
+- Restored src/main.cpp with Scotland2 setup() and late_load() exports.
+- Config initialization and hook registration can no longer disappear from a source ZIP.
+
+Runtime lifecycle:
+- Reset hooks before clearing state.
+- Clear parent-track callbacks, movement pools, note/wall caches, jump state, handedness state, and cached Unity/Zenject pointers.
+- Clear transient state on stable non-gameplay scene changes.
+- Clear stale SongCore play-button blocking when selecting another map.
+- Respect the NE + Mapping Extensions conflict setting during both selection and gameplay activation.
+
+Vivify / Heck interoperability:
+- Detect and log Vivify requirements without adding a hard dependency.
+- Keep Vivify + Noodle enabled together.
+- Document why direct linking to the PC Heck framework is not valid on Quest and use behavioral parity through CJD/Tracks/Chroma instead.
+
+Build and validation:
+- Added cross-platform scripts/build.sh.
+- Repaired scripts/build.ps1 NDK lookup.
+- Removed personal absolute NDK paths and added ndkpath.example.txt.
+- Added loader/metadata/dependency/shell/macOS-junk/privacy validation.
+- Updated qpm build shortcuts and source build instructions.
+
+--- Previous patch history ---
+
+Noodle Extensions Quest custom fork — Beat Saber 1.40.8 compile patch
+
+Changed file:
+  src/Hooks/FakeNotes/BeatmapData.cpp
+
+Fixes:
+- Removed the obsolete V3 GetBeatmapDataBasicInfoFromSaveData hook. bs-cordl 4008.0.0 only exposes GetBeatmapDataBasicInfoFromSaveDataJson(StringW).
+- Removed the corresponding INSTALL_HOOK entry.
+- Removed the duplicate NEInstallHooks(InstallBeatmapDataHooks) registration.
+
+Preserved:
+- V2 fake-object basic-info counting.
+- V3 fakeColorNotes, fakeBombNotes, fakeObstacles, fakeSliders and fakeBurstSliders loading.
+- V3 fake object marking through V3_BeatmapDataLoader_GetBeatmapDataFromSaveData.
+
+Note:
+- This patch intentionally disables only the extra V3 menu/basic-info count correction that used an API no longer present in Beat Saber 1.40.8.
+
+Left-handed build compatibility fix:
+- Replaced the removed NEVector.hpp include with tracks/shared/Vector.h in
+  Hooks/LeftHanded/NoteData.cpp and BeatmapDataMirrorTransform.cpp.
+
+v4 linker fix:
+- Restored src/NoodleExtensions.cpp (NECaches static storage + hook registration).
+- Restored src/SpawnDataHelper.cpp (LineYPosForLineLayer, HighestJumpPosYForLineLayer, GetGravityBase).
+- Restored src/main.cpp (setup/late_load mod entrypoints).

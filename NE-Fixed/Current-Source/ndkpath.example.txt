@@ -1,0 +1,3 @@
+# Copy this file to ndkpath.txt and replace the line below with your Android NDK directory.
+# You can skip this file entirely when ANDROID_NDK_HOME is set or QPM-RS installed the NDK.
+/path/to/android-ndk

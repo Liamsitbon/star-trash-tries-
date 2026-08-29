@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/QuestPackageManager/QPM.Package/refs/heads/main/qpm.schema.json",
+  "sharedDir": "shared",
+  "dependenciesDir": "extern",
+  "version": "0.4.0",
+  "info": {
+    "name": "Nexora",
+    "id": "nexora",
+    "version": "0.2.5",
+    "url": "https://github.com/liamsitbon/Nexora",
+    "additionalData": {
+      "overrideSoName": "libNexora.so",
+      "cmake": true
+    }
+  },
+  "workspace": {
+    "scripts": {
+      "build": ["bash ./scripts/build.sh"],
+      "qmod": ["bash ./scripts/build.sh", "python3 ./scripts/package_qmod.py"]
+    },
+    "ndk": "^27.3.13750724",
+    "qmodIncludeDirs": ["./build", "./extern/libs"],
+    "qmodIncludeFiles": [],
+    "qmodOutput": "./Nexora.qmod"
+  },
+  "dependencies": [
+    {"id": "beatsaber-hook", "versionRange": "^6.4.2", "additionalData": {}},
+    {"id": "bs-cordl", "versionRange": "4008.*", "additionalData": {}},
+    {"id": "custom-types", "versionRange": "^0.18.4", "additionalData": {"includeQmod": true}},
+    {"id": "custom-json-data", "versionRange": "^0.24.5", "additionalData": {}},
+    {"id": "songcore", "versionRange": "^1.1.26", "additionalData": {"includeQmod": true}},
+    {"id": "config-utils", "versionRange": "^2.0.3", "additionalData": {}},
+    {"id": "scotland2", "versionRange": "^0.1.6", "additionalData": {"includeQmod": false}},
+    {"id": "paper2_scotland2", "versionRange": "^4.6.4", "additionalData": {}}
+  ]
+}

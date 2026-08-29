@@ -1,0 +1,69 @@
+{
+  "requirements": ["Nexora"],
+  "customEvents": [
+    {
+      "b": 0,
+      "t": "Nexora.LoadVideo",
+      "d": {
+        "id": "worldA",
+        "media": "Nexora/Media/mountains.mp4",
+        "radius": 90,
+        "projection": "mono",
+        "opacity": 0,
+        "brightness": 1.05,
+        "followPlayer": true,
+        "autoplay": true,
+        "loop": false,
+        "syncToSong": true,
+        "videoOffset": 0
+      }
+    },
+    {
+      "b": 2,
+      "t": "Nexora.AnimateDome",
+      "d": {
+        "id": "worldA",
+        "opacity": 1,
+        "durationSeconds": 2.5,
+        "ease": "inOut"
+      }
+    },
+    {
+      "b": 32,
+      "t": "Nexora.Shockwave",
+      "d": {
+        "id": "worldA",
+        "ripple": 0.2,
+        "rippleFrequency": 14,
+        "durationSeconds": 0.7
+      }
+    },
+    {
+      "b": 48,
+      "t": "Nexora.AnimateDome",
+      "d": {
+        "id": "worldA",
+        "deform": 0.3,
+        "twist": 0.35,
+        "chromatic": 0.025,
+        "durationSeconds": 4,
+        "ease": "smoothStep"
+      }
+    },
+    {
+      "b": 64,
+      "t": "Nexora.GlitchBurst",
+      "d": {
+        "amount": 0.75,
+        "glitch": 0.8,
+        "chromatic": 0.08,
+        "durationSeconds": 0.3
+      }
+    },
+    {
+      "b": 96,
+      "t": "Nexora.DestroyAll",
+      "d": {}
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+#include "beatsaber-hook/shared/utils/il2cpp-utils.hpp"
+#include "beatsaber-hook/shared/utils/hooking.hpp"
+
+#include "GlobalNamespace/BaseNoteVisuals.hpp"
+#include "GlobalNamespace/NoteController.hpp"
+#include "GlobalNamespace/GameNoteController.hpp"
+#include "GlobalNamespace/DisappearingArrowControllerBase_1.hpp"
+#include "UnityEngine/Vector3.hpp"
+#include "UnityEngine/Transform.hpp"
+#include "UnityEngine/GameObject.hpp"
+
+#include "custom-json-data/shared/CustomBeatmapData.h"
+
+#include "NEHooks.h"
+#include "AssociatedData.h"
+#include "NECaches.h"
+
+using namespace GlobalNamespace;
+using namespace UnityEngine;
+
+MAKE_HOOK_MATCH(BaseNoteVisuals_Awake, &BaseNoteVisuals::Awake, void, BaseNoteVisuals* self) {
+  if (!Hooks::isNoodleHookEnabled()) return BaseNoteVisuals_Awake(self);
+
+  BaseNoteVisuals_Awake(self);
+
+  static auto ICubeNoteTypeProviderKlass = classof(GameNoteController*); // classof(INoteMovementProvider*);
+  static auto CustomNoteDataKlass = classof(CustomJSONData::CustomNoteData*);
+
+  if (self && self->_noteController &&
+      il2cpp_functions::class_is_assignable_from(ICubeNoteTypeProviderKlass, self->_noteController->klass)) {
+    NoteController* noteController = static_cast<NoteController*>(self->_noteController.ptr());
+
+    if (!noteController->_noteData) return;
+
+    DisappearingArrowControllerBase_1<GameNoteController*>* disappearingArrowController;
+
+    if (il2cpp_functions::class_is_assignable_from(CustomNoteDataKlass, noteController->_noteData->klass)) {
+      //        if (noteData->customData) {
+      auto& ad = NECaches::getNoteCache(noteController);
+
+      disappearingArrowController =
+          (DisappearingArrowControllerBase_1<GlobalNamespace::GameNoteController*>*)ad.disappearingArrowController;
+      if (!disappearingArrowController) {
+        disappearingArrowController =
+            self->get_gameObject()->GetComponent<DisappearingArrowControllerBase_1<GameNoteController*>*>();
+        ad.disappearingArrowController = disappearingArrowController;
+      }
+    } else {
+      disappearingArrowController =
+          self->get_gameObject()->GetComponent<DisappearingArrowControllerBase_1<GameNoteController*>*>();
+    }
+
+    if (disappearingArrowController != nullptr) {
+      disappearingArrowController->SetArrowTransparency(
+          1); // Preserve the ghost-arrow workaround only when the component exists.
+    }
+  }
+}
+
+void InstallBaseNoteVisualsHooks() {
+  INSTALL_HOOK(NELogger::Logger, BaseNoteVisuals_Awake);
+}
+
+NEInstallHooks(InstallBaseNoteVisualsHooks);

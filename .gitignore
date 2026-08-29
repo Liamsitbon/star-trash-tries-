@@ -104,3 +104,17 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Beat Saber bundle generated data and local evidence. Keep source, manifests,
+# Unity project assets, and the explicitly published root release artifacts.
+**/build/
+**/extern/
+**/diagnostics/
+**/unity/Library/
+**/unity/Logs/
+**/unity/Temp/
+**/unity/UserSettings/
+**/__pycache__/
+*.DS_Store
+/Dynasty/
+/runtime-video-audit-*/

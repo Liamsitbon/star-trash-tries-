@@ -1,0 +1,13 @@
+--- a/src/Hooks/NoteController.cpp
++++ b/src/Hooks/NoteController.cpp
+@@
+-  bool isDissolving = offset.dissolve.value_or(0) > 0 || offset.dissolveArrow.value_or(0) > 0;
++  // Noodle dissolve values are visibility: 1 = fully visible, 0 = fully hidden.
++  // Keep the cutout-capable material whenever either body or arrow is not fully visible.
++  bool isDissolving = offset.dissolve.value_or(1.0f) < 1.0f ||
++                      offset.dissolveArrow.value_or(1.0f) < 1.0f;
+--- a/src/Hooks/BeatmapObjectCallBackController.cpp
++++ b/src/Hooks/BeatmapObjectCallBackController.cpp
+@@
+-  if (beatmapOpt && controller != selfController || selfController->_beatmapData != beatmapData) {
++  if (beatmapOpt && (controller != selfController || selfController->_beatmapData != beatmapData)) {

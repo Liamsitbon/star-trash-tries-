@@ -1,0 +1,11 @@
+{
+  "file": "Vivify-Quest-0.6.8.qmod",
+  "version": "0.6.8",
+  "bytes": 2334028,
+  "sha256": "46c0ea95910863c66e18b018cd15097450599c4b34c57cdc99a59b139cebbfe0",
+  "runtimeSha256": "e270063fdb1ecddeed685fcf171a7bd861f1aec0e40b3ddef9fd6edc79ad5f71",
+  "target": "1.40.8_7379",
+  "architecture": "ELF64-AArch64",
+  "pcPayloads": false,
+  "runtimeProof": "source-build-and-package-only"
+}
