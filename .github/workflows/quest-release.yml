@@ -70,7 +70,7 @@ jobs:
             build: pwsh -NoProfile -File scripts/build.ps1 -release
             package: qpm qmod manifest && qpm qmod zip
             check: python3 -c 'import json; m=json.load(open("mod.json")); assert m["id"] == "bs-audiolink" and m["packageVersion"] == "1.40.8_7379" and m["modFiles"] == ["libbs-audiolink.so"]'
-            qmod: AudioLink.qmod
+            qmod: bs-audiolink.qmod
             release_name: AudioLink-Quest-0.0.1.qmod
 
     steps:
