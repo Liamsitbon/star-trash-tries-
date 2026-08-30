@@ -1,0 +1,107 @@
+name: Publish QPM Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+env:
+  module_id: bs-audiolink
+  qmodName: AudioLink
+  cache-name: audiolink_cache
+  
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout
+        with:
+          submodules: true
+          lfs: true
+
+      - name: Get Tag Version
+        id: get_tag_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get QPM
+        uses: Fernthedev/qpm-action@v1
+        with:
+          resolve_ndk: true
+          #required
+          workflow_token: ${{secrets.GITHUB_TOKEN}}
+          restore: true # will run restore on download
+          cache: true #will cache dependencies
+          publish: false
+          version: ${{ steps.get_tag_version.outputs.VERSION }}
+          tag: ${{ steps.get_tag_version.outputs.TAG }}
+
+          # set to true if applicable, ASSUMES the file is already a release asset
+          qpm_release_bin: true
+          qpm_debug_bin: true
+
+          # Name of qmod in release asset. Assumes exists, same as prior
+          qpm_qmod: ${{env.qmodName}}.qmod
+
+      - name: Build
+        run: |
+          cd ${GITHUB_WORKSPACE}
+          qpm s build
+          qpm qmod manifest
+          qpm qmod zip
+
+      - name: Get Library Name and Build ID
+        id: libname
+        run: |
+          cd ./build/
+          pattern="lib${module_id}*.so"
+          files=( $pattern )
+          echo "LIBNAME=${files[0]}" >> $GITHUB_ENV
+          echo "BUILD_ID=$(readelf -n ${files[0]} | grep -Po "(?<=Build ID: )[0-9a-f]+")" >> $GITHUB_ENV
+
+      - name: Rename debug
+        run: |
+          mv ./build/debug/${{ env.LIBNAME }} ./build/debug/debug_${{ env.LIBNAME }}
+
+      - name: Calculate SHA-256 of the qmod file
+        id: qmodsha
+        run: |
+          echo "QMOD_SHA=$(sha256sum ./${{ env.qmodName }}.qmod | grep -Po "^[0-9a-f]+")" >> $GITHUB_ENV
+          
+      - name: Upload to Release
+        id: upload_file_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.event.inputs.release_msg }}
+          tag_name: ${{ github.event.inputs.version }}
+          body: |
+            ### Build info
+            
+            SHA-256: ${{ env.QMOD_SHA }}
+            Build ID: ${{ env.BUILD_ID }}
+          files: |
+            ./${{ env.qmodName }}.qmod
+            ./build/${{ env.LIBNAME }}
+            ./build/debug/debug_${{ env.LIBNAME }}
+
+      - name: Make PR to QeatMods3
+        id: qmod-release
+        uses: QuestPackageManager/qmod-repo-publish-action@main
+        # TODO: Make this work!
+        continue-on-error: true
+        with:
+          token: ${{secrets.GITHUB_TOKEN}}
+          # first asset URL
+          qmod_url: ${{ fromJSON(steps.upload_file_release.outputs.assets)[0].browser_download_url }}
+          qmod_repo_owner: 'dantheman827'
+          qmod_repo_name: 'bsqmods'

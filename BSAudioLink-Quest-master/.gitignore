@@ -1,0 +1,11 @@
+build/
+extern/
+extern.cmake
+qpm_defines.cmake
+tombstone_*
+mod.template.json
+*.log
+mod.json
+*.qmod
+*.psd
+ndkpath.txt
