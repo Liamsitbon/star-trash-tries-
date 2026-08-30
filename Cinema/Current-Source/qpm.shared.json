@@ -7,7 +7,7 @@
     "info": {
       "name": "Cinema",
       "id": "cinema",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "url": "https://github.com/liamsitbon/Cinema-Quest",
       "additionalData": {
         "overrideSoName": "libCinema.so",
@@ -45,13 +45,6 @@
         "id": "bs-cordl",
         "versionRange": "4008.*",
         "additionalData": {}
-      },
-      {
-        "id": "custom-types",
-        "versionRange": "^0.18.4",
-        "additionalData": {
-          "includeQmod": true
-        }
       },
       {
         "id": "songcore",

@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = "1.40.8_7379"
-VERSION = "0.1.2"
+VERSION = "0.2.0"
 
 
 def fail(message: str) -> None:
@@ -41,12 +41,14 @@ def main() -> None:
         main_source,
         (
             "BSML::Register::RegisterSettingsMenu",
+            "BSML::Register::RegisterGameplaySetupTab",
+            "BSML::Register::RegisterMainMenu",
             'u"Enabled"',
             "SetCinemaEnabled(value)",
             "Runtime::Instance().SetEnabled(enabled)",
-            "if (enabled) CinemaQuest::InstallHooks();",
-            "Cinema hooks remain uninstalled",
-            "safetyReset_0_1_1",
+            "CinemaQuest::InstallHooks();",
+            "Cinema disabled startup complete",
+            "safetyReset_0_2_0",
             'document.AddMember("enabled", false',
         ),
         "Mods settings toggle",
@@ -58,15 +60,18 @@ def main() -> None:
             '"video.json"',
             "ResolveLocalVideo",
             "IsPathInside(root, candidate)",
+            'ReadFloat(*value, "endVideoAt")',
+            'ReadFloat(*value, "bloom")',
+            "ApplyPlaybackFade",
             "VideoRenderMode::RenderTexture",
             "set_targetTexture(_videoTexture)",
-            "add_frameReady(_frameReadyDelegate)",
-            "add_prepareCompleted(_prepareCompletedDelegate)",
-            "add_errorReceived(_errorReceivedDelegate)",
+            "set_sendFrameReadyEvents(false)",
+            "_videoPlayer->get_frame() >= 0",
             "SetScreensVisible(false)",
             "SetScreensVisible(true)",
             "if (!enabled)",
-            "StopSession();",
+            "StopSession(true)",
+            "StopSession(false)",
             "_videoPlayer->set_targetTexture(nullptr)",
             "_videoTexture->Release()",
             "SetSelectedMapContext",
@@ -79,6 +84,9 @@ def main() -> None:
         hooks,
         (
             "AudioTimeSyncController_StartSong",
+            "AudioTimeSyncController_Update",
+            "AudioTimeSyncController_StopSong",
+            "AudioTimeSyncController_OnDestroy",
             "AudioTimeSyncController_Pause",
             "AudioTimeSyncController_Resume",
             "if (GetCinemaEnabled())",
@@ -88,13 +96,24 @@ def main() -> None:
     )
     if "GameScenesManager_ScenesTransitionCoroutine" in hooks:
         fail("unsafe global scene-transition hook is still installed")
+    forbidden_startup = (
+        "custom_types::Register::AutoRegister",
+        "EnsureBehaviour",
+        "RuntimeBehaviour",
+    )
+    combined = main_source + runtime
+    if any(token in combined for token in forbidden_startup):
+        fail("disabled startup still registers a custom Unity runtime type")
+    dependency_ids = {item["id"] for item in manifest.get("dependencies", [])}
+    if "custom-types" in dependency_ids:
+        fail("Cinema still declares a direct custom-types dependency")
     require(
         runtime,
         (
-            'scene.get_name() == u"MainMenu"',
-            "retiring the previous gameplay session on a stable frame",
-            "if (GetCinemaEnabled())",
-            "no runtime GameObject, AssetBundle, RenderTexture or VideoPlayer was created",
+            "if (_initialized)",
+            "runtime armed without creating Unity objects",
+            "RetireGameplay",
+            "if (canTouchUnity && Alive(_videoPlayer))",
         ),
         "scene-safe opt-in lifecycle",
     )
@@ -142,7 +161,7 @@ def main() -> None:
 
     print(
         "Cinema Quest contract: PASS "
-        f"(disabled-by-default recovery; no transition hook; local-only video; stereo shader; {TARGET}; ELF64 AArch64)"
+        f"(menu-only disabled startup; polling sync; pointer-only scene retirement; local-only video; stereo shader; {TARGET}; ELF64 AArch64)"
     )
 
 

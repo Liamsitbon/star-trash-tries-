@@ -10,8 +10,8 @@
 #include "HMUI/ViewController.hpp"
 #include "bsml/shared/BSML-Lite/Creation/Layout.hpp"
 #include "bsml/shared/BSML-Lite/Creation/Settings.hpp"
+#include "bsml/shared/BSML-Lite/Creation/Text.hpp"
 #include "bsml/shared/BSML.hpp"
-#include "custom-types/shared/register.hpp"
 #include "scotland2/shared/modloader.h"
 
 static modloader::ModInfo modInfo{MOD_ID, VERSION, 0};
@@ -34,11 +34,11 @@ void EnsureConfigDefaults() {
   if (!document.IsObject()) document.SetObject();
   auto& allocator = document.GetAllocator();
   auto enabled = document.FindMember("enabled");
-  auto safetyReset = document.FindMember("safetyReset_0_1_1");
+  auto safetyReset = document.FindMember("safetyReset_0_2_0");
 
-  // Cinema 0.1.0 could run teardown code inside every Unity scene transition.
-  // Reset old configurations once so installing this recovery build cannot
-  // immediately re-enable video playback before the user opts in again.
+  // Cinema 0.1.x could register and initialize runtime work during Scotland2's
+  // first Unity destruction callback. Reset once so 0.2.0 always gets a clean,
+  // menu-only first boot before the user opts in.
   bool const mustApplySafetyReset =
       safetyReset == document.MemberEnd() || !safetyReset->value.IsBool() ||
       !safetyReset->value.GetBool();
@@ -56,7 +56,7 @@ void EnsureConfigDefaults() {
     gEnabled = false;
     configuration.Write();
     PaperLogger.warn(
-        "Cinema 0.1.1 safety reset applied; enable it explicitly from Mods > Cinema after confirming normal maps are stable");
+        "Cinema 0.2.0 safety reset applied; first boot is menu-only until Cinema is enabled explicitly");
     return;
   }
 
@@ -91,31 +91,53 @@ void InstallFileLogSink() {
     if (!gLogFile.is_open()) return;
     gLogFile << '[' << Paper::format_as(data.level) << "] " << data.message << '\n';
     ++gLinesSinceFlush;
-    bool const urgent = data.level == Paper::LogLevel::WRN ||
-                        data.level == Paper::LogLevel::ERR ||
-                        data.level == Paper::LogLevel::CRIT;
-    if (urgent || gLinesSinceFlush >= 24) {
-      gLogFile.flush();
-      gLinesSinceFlush = 0;
-    }
+    // Startup diagnostics must survive an immediate native crash. Cinema's
+    // log volume is low enough that flushing every line is the safer tradeoff.
+    gLogFile.flush();
+    gLinesSinceFlush = 0;
   });
 }
 
-void RegisterSettingsMenu() {
+void PopulateMenu(UnityEngine::Transform* parent) {
+  if (parent == nullptr) return;
+  auto* container = BSML::Lite::CreateScrollableSettingsContainer(parent);
+  if (container == nullptr) return;
+  auto transform = container->get_transform();
+  BSML::Lite::CreateText(
+      transform,
+      u"Quest standalone: local map videos only. Re-select the map after enabling.",
+      3.2f);
+  BSML::Lite::CreateToggle(
+      transform, u"Enabled", GetCinemaEnabled(),
+      [](bool value) { SetCinemaEnabled(value); });
+}
+
+void RegisterMenus() {
   bool const registered = BSML::Register::RegisterSettingsMenu(
       "Cinema",
       [](HMUI::ViewController* viewController, bool firstActivation, bool, bool) {
         if (!firstActivation || viewController == nullptr) return;
-        auto* container =
-            BSML::Lite::CreateScrollableSettingsContainer(viewController->get_transform());
-        if (container == nullptr) return;
-        BSML::Lite::CreateToggle(
-            container->get_transform(), u"Enabled", GetCinemaEnabled(),
-            [](bool value) { SetCinemaEnabled(value); });
+        PopulateMenu(viewController->get_transform());
       },
       false);
+  bool const gameplayRegistered = BSML::Register::RegisterGameplaySetupTab(
+      "Cinema",
+      [](UnityEngine::GameObject* root, bool firstActivation) {
+        if (!firstActivation || root == nullptr) return;
+        PopulateMenu(root->get_transform());
+      },
+      BSML::MenuType::All);
+  BSML::Register::RegisterMainMenu(
+      "Cinema", "Cinema", "Cinema Quest local-video settings",
+      [](HMUI::ViewController* viewController, bool firstActivation, bool, bool) {
+        if (!firstActivation || viewController == nullptr) return;
+        PopulateMenu(viewController->get_transform());
+      });
   PaperLogger.info("Cinema Mods settings menu registration {}",
                    registered ? "succeeded" : "was deferred/rejected by BSML");
+  PaperLogger.info("Cinema Gameplay Setup tab registration {}",
+                   gameplayRegistered ? "succeeded" : "was deferred/rejected by BSML");
+  PaperLogger.info("Cinema main-menu button registration requested");
 }
 }  // namespace
 
@@ -138,8 +160,11 @@ void SetCinemaEnabled(bool enabled) {
   }
   gEnabled = enabled;
   configuration.Write();
+  if (enabled) {
+    CinemaQuest::InstallHooks();
+    CinemaQuest::Runtime::Instance().LateLoad();
+  }
   CinemaQuest::Runtime::Instance().SetEnabled(enabled);
-  if (enabled) CinemaQuest::InstallHooks();
   PaperLogger.info("Cinema enabled={}", enabled);
 }
 
@@ -154,13 +179,13 @@ MOD_EXTERN_FUNC void setup(CModInfo* info) noexcept {
 
 MOD_EXTERN_FUNC void late_load() noexcept {
   il2cpp_functions::Init();
-  custom_types::Register::AutoRegister();
-  RegisterSettingsMenu();
-  CinemaQuest::Runtime::Instance().LateLoad();
+  PaperLogger.info("Cinema late_load entered; no Unity runtime objects are created here");
+  RegisterMenus();
   if (gEnabled) {
     CinemaQuest::InstallHooks();
+    CinemaQuest::Runtime::Instance().LateLoad();
   } else {
     PaperLogger.info(
-        "Cinema hooks remain uninstalled until the Mods > Cinema toggle is enabled");
+        "Cinema disabled startup complete: no hooks, SongCore callbacks, AssetBundle, RenderTexture, VideoPlayer or custom type registration");
   }
 }

@@ -1,6 +1,5 @@
 #include "CinemaRuntime.hpp"
 
-#include "CinemaComponents.hpp"
 #include "QuestInterop.hpp"
 #include "main.hpp"
 
@@ -19,8 +18,6 @@
 #include "UnityEngine/Object.hpp"
 #include "UnityEngine/Quaternion.hpp"
 #include "UnityEngine/RenderTextureFormat.hpp"
-#include "UnityEngine/SceneManagement/Scene.hpp"
-#include "UnityEngine/SceneManagement/SceneManager.hpp"
 #include "UnityEngine/Texture.hpp"
 #include "UnityEngine/TextureWrapMode.hpp"
 #include "UnityEngine/Time.hpp"
@@ -29,7 +26,6 @@
 #include "UnityEngine/Video/VideoAudioOutputMode.hpp"
 #include "UnityEngine/Video/VideoRenderMode.hpp"
 #include "UnityEngine/Video/VideoSource.hpp"
-#include "custom-types/shared/delegate.hpp"
 #include "beatsaber-hook/shared/config/rapidjson-utils.hpp"
 #include "songcore/shared/Capabilities.hpp"
 #include "songcore/shared/SongCore.hpp"
@@ -212,13 +208,11 @@ Runtime& Runtime::Instance() {
 }
 
 void Runtime::LateLoad() {
-  if (GetCinemaEnabled()) {
-    EnsureBehaviour();
-    LoadAssets();
-  } else {
-    PaperLogger.info(
-        "Cinema is disabled: no runtime GameObject, AssetBundle, RenderTexture or VideoPlayer was created");
+  if (_initialized) {
+    RefreshCapabilityRegistration(GetCinemaEnabled());
+    return;
   }
+  _initialized = true;
   RefreshCapabilityRegistration(GetCinemaEnabled());
   SongCore::API::LevelSelect::GetLevelWasSelectedEvent() +=
       [](SongCore::API::LevelSelect::LevelWasSelectedEventArgs const& event) {
@@ -242,19 +236,7 @@ void Runtime::LateLoad() {
             required.noodleExtensions, required.vivify);
       };
   PaperLogger.info(
-      "Cinema Quest runtime ready: local map video only; no downloader, ffmpeg, URL playback or PC payloads");
-}
-
-void Runtime::EnsureBehaviour() {
-  if (Alive(_behaviour)) return;
-  try {
-    auto* object = UnityEngine::GameObject::New_ctor(u"CinemaQuestRuntime");
-    if (!Alive(object)) return;
-    UnityEngine::Object::DontDestroyOnLoad(object);
-    _behaviour = object->AddComponent<RuntimeBehaviour*>();
-  } catch (...) {
-    PaperLogger.warn("Cinema runtime behaviour could not be created yet; gameplay will retry");
-  }
+      "Cinema Quest runtime armed without creating Unity objects: local map video only; no downloader, ffmpeg, URL playback or PC payloads");
 }
 
 void Runtime::LoadAssets() {
@@ -419,6 +401,12 @@ std::optional<VideoConfig> Runtime::ParseConfig(
   if (speed > 10.0f) speed /= 100.0f;
   config.playbackSpeed = Clamp(speed, 0.1f, 4.0f);
   config.loop = ReadBool(*value, "loop").value_or(false);
+  config.opacity = Clamp(ReadFloat(*value, "opacity").value_or(1.0f), 0.0f, 1.0f);
+  config.bloom = Clamp(ReadFloat(*value, "bloom").value_or(0.0f), 0.0f, 2.0f);
+  if (auto endVideoAt = ReadFloat(*value, "endVideoAt");
+      endVideoAt.has_value() && *endVideoAt >= 0.0f) {
+    config.endVideoAt = Clamp(*endVideoAt, 0.0f, 24.0f * 60.0f * 60.0f);
+  }
   config.screenHeight =
       Clamp(ReadFloat(*value, "screenHeight").value_or(25.0f), 0.5f, 100.0f);
   config.curvatureDegrees =
@@ -460,9 +448,10 @@ std::optional<VideoConfig> Runtime::ParseConfig(
 void Runtime::BeginGameplay(
     GlobalNamespace::AudioTimeSyncController* audioController,
     float startTimeOffset) {
-  StopSession();
+  // A previous scene owns any abandoned objects. Never probe stale Unity
+  // pointers while a new gameplay scene is being constructed.
+  StopSession(false);
   if (!GetCinemaEnabled() || !_selectedConfig || !Alive(audioController)) return;
-  EnsureBehaviour();
   LoadAssets();
   if (!Alive(_videoShader)) {
     PaperLogger.error("Cinema skipped gameplay because its Quest shader is unavailable");
@@ -480,10 +469,10 @@ void Runtime::BeginGameplay(
         startTimeOffset, audioController->get_songTime(), _screens.size());
   } catch (std::exception const& exception) {
     PaperLogger.error("Cinema could not create playback graph: {}", exception.what());
-    StopSession();
+    StopSession(true);
   } catch (...) {
     PaperLogger.error("Cinema could not create playback graph (non-standard exception)");
-    StopSession();
+    StopSession(true);
   }
 }
 
@@ -514,33 +503,10 @@ void Runtime::CreatePlaybackGraph() {
   _videoPlayer->set_isLooping(_selectedConfig->loop);
   if (_videoPlayer->get_canSetSkipOnDrop()) _videoPlayer->set_skipOnDrop(true);
 
-  std::function<void(UnityEngine::Video::VideoPlayer*, std::int64_t)> frameReady =
-      [](UnityEngine::Video::VideoPlayer* player, std::int64_t frameIndex) {
-        Runtime::Instance().OnVideoFrameReady(player, frameIndex);
-      };
-  _frameReadyDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_FrameReadyEventHandler*>(
-          frameReady);
-  _videoPlayer->add_frameReady(_frameReadyDelegate);
-  _videoPlayer->set_sendFrameReadyEvents(true);
-
-  std::function<void(UnityEngine::Video::VideoPlayer*)> prepareCompleted =
-      [](UnityEngine::Video::VideoPlayer* player) {
-        Runtime::Instance().OnVideoPrepared(player);
-      };
-  _prepareCompletedDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_EventHandler*>(
-          prepareCompleted);
-  _videoPlayer->add_prepareCompleted(_prepareCompletedDelegate);
-
-  std::function<void(UnityEngine::Video::VideoPlayer*, StringW)> errorReceived =
-      [](UnityEngine::Video::VideoPlayer* player, StringW message) {
-        Runtime::Instance().OnVideoError(player, message);
-      };
-  _errorReceivedDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_ErrorEventHandler*>(
-          errorReceived);
-  _videoPlayer->add_errorReceived(_errorReceivedDelegate);
+  // Poll VideoPlayer from AudioTimeSyncController::Update instead of creating
+  // IL2CPP delegates/custom types. This keeps disabled startup and scene
+  // transitions out of custom-types registration entirely.
+  _videoPlayer->set_sendFrameReadyEvents(false);
 
   CreateScreen(_selectedConfig->mainScreen);
   for (auto const& placement : _selectedConfig->additionalScreens) {
@@ -693,13 +659,26 @@ void Runtime::ApplyMaterialProperties(ScreenInstance& screen) const {
   if (!Alive(screen.material) || !_selectedConfig) return;
   screen.material->set_renderQueue(1998);
   screen.material->SetTexture(sMainTex, _videoTexture);
-  screen.material->SetFloat(sBrightness, _selectedConfig->brightness);
+  // Quest's verified bundle has no PC BloomPrePass. Preserve the authored
+  // bloom intent as a bounded luminance gain without allocating a camera pass.
+  screen.material->SetFloat(
+      sBrightness,
+      Clamp(_selectedConfig->brightness * (1.0f + _selectedConfig->bloom * 0.25f),
+            0.0f, 4.0f));
   screen.material->SetFloat(sContrast, _selectedConfig->contrast);
   screen.material->SetFloat(sSaturation, _selectedConfig->saturation);
   screen.material->SetFloat(sHue, _selectedConfig->hueDegrees / 360.0f);
   screen.material->SetFloat(sExposure, _selectedConfig->exposure);
   screen.material->SetFloat(sGamma, _selectedConfig->gamma);
   screen.material->SetFloat(sOpacity, _selectedConfig->opacity);
+}
+
+void Runtime::ApplyPlaybackFade(float value) const {
+  if (!_selectedConfig) return;
+  float const opacity = _selectedConfig->opacity * Clamp(value, 0.0f, 1.0f);
+  for (auto const& screen : _screens) {
+    if (Alive(screen.material)) screen.material->SetFloat(sOpacity, opacity);
+  }
 }
 
 void Runtime::SetScreensVisible(bool visible) {
@@ -731,13 +710,6 @@ float Runtime::DesiredPlaybackSpeed() const {
 void Runtime::Update() {
   if (!_sessionActive) return;
   try {
-    auto scene = UnityEngine::SceneManagement::SceneManager::GetActiveScene();
-    if (scene.get_name() == u"MainMenu") {
-      PaperLogger.info(
-          "Cinema reached MainMenu; retiring the previous gameplay session on a stable frame");
-      StopSession();
-      return;
-    }
     if (!_selectedConfig || !GetCinemaEnabled() || !Alive(_videoPlayer) ||
         _decoderFailed) {
       return;
@@ -769,7 +741,7 @@ void Runtime::Update() {
                        width, height, aspect);
     }
 
-    bool const suspended = _paused || _applicationPaused || !_focused;
+    bool const suspended = _paused;
     if (suspended || !Alive(_audioController)) return;
 
     float const songTime = _audioController->get_songTime();
@@ -782,11 +754,19 @@ void Runtime::Update() {
       SetScreensVisible(false);
       return;
     }
-    if (!_selectedConfig->loop && length > 0.01 && desired >= length) {
+    double const authoredEnd = _selectedConfig->endVideoAt.has_value()
+                                   ? static_cast<double>(*_selectedConfig->endVideoAt)
+                                   : (!_selectedConfig->loop && length > 0.01
+                                          ? length
+                                          : -1.0);
+    if (authoredEnd > 0.0 && desired >= authoredEnd) {
       if (_videoPlayer->get_isPlaying()) _videoPlayer->Pause();
       SetScreensVisible(false);
       return;
     }
+    ApplyPlaybackFade(authoredEnd > 0.0
+                          ? static_cast<float>(std::min(1.0, authoredEnd - desired))
+                          : 1.0f);
 
     if (!_playIssued) {
       if (_videoPlayer->get_canSetTime()) _videoPlayer->set_time(desired);
@@ -795,13 +775,23 @@ void Runtime::Update() {
       if (_videoPlayer->get_canSetPlaybackSpeed()) {
         _videoPlayer->set_playbackSpeed(_slowStartPending ? 1.0f : speed);
       }
-      _videoPlayer->set_sendFrameReadyEvents(true);
       _videoPlayer->Play();
       _playIssued = true;
       _lastSyncRealtime = realtime;
       PaperLogger.info("Cinema playback issued target={:.3f}s speed={:.3f} stagedSlowStart={}",
                        desired, speed, _slowStartPending);
       return;
+    }
+
+    if (!_firstFrameReady && _videoPlayer->get_frame() >= 0) {
+      _firstFrameReady = true;
+      if (_slowStartPending && _videoPlayer->get_canSetPlaybackSpeed()) {
+        _videoPlayer->set_playbackSpeed(DesiredPlaybackSpeed());
+        _slowStartPending = false;
+      }
+      SetScreensVisible(true);
+      PaperLogger.info("Cinema first decoded frame revealed {} screen(s) at frame {}",
+                       _screens.size(), _videoPlayer->get_frame());
     }
 
     if (!_videoPlayer->get_isPlaying()) {
@@ -839,72 +829,14 @@ void Runtime::Update() {
   }
 }
 
-void Runtime::OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
-                                std::int64_t frameIndex) {
-  if (player != _videoPlayer || frameIndex < 0 || !_sessionActive) return;
-  bool const first = !_firstFrameReady;
-  _firstFrameReady = true;
-  if (_slowStartPending && player->get_canSetPlaybackSpeed()) {
-    player->set_playbackSpeed(DesiredPlaybackSpeed());
-    _slowStartPending = false;
-  }
-  player->set_sendFrameReadyEvents(false);
-  SetScreensVisible(true);
-  if (first) {
-    PaperLogger.info("Cinema frameReady revealed {} screen(s) at frame {}",
-                     _screens.size(), frameIndex);
-  }
-}
-
-void Runtime::OnVideoPrepared(UnityEngine::Video::VideoPlayer* player) {
-  if (player != _videoPlayer || !_sessionActive || !Alive(player)) return;
-  PaperLogger.info("Cinema decoder prepared media='{}' size={}x{} length={:.3f}s",
-                   _selectedConfig
-                       ? std::filesystem::path(_selectedConfig->videoPath)
-                             .filename()
-                             .string()
-                       : std::string("<retired>"),
-                   player->get_width(), player->get_height(),
-                   player->get_length());
-}
-
-void Runtime::OnVideoError(UnityEngine::Video::VideoPlayer* player,
-                           StringW message) {
-  if (player != _videoPlayer || !_sessionActive) {
-    PaperLogger.error("Cinema decoder error after session retirement: {}",
-                      std::string(message));
-    return;
-  }
-  _decoderFailed = true;
-  _playIssued = false;
-  SetScreensVisible(false);
-  PaperLogger.error("Cinema decoder rejected media='{}': {}",
-                    _selectedConfig
-                        ? std::filesystem::path(_selectedConfig->videoPath)
-                              .filename()
-                              .string()
-                        : std::string("<unknown>"),
-                    std::string(message));
-}
-
 void Runtime::SetPaused(bool paused) {
   _paused = paused;
   ApplyPauseState();
 }
 
-void Runtime::SetApplicationPaused(bool paused) {
-  _applicationPaused = paused;
-  ApplyPauseState();
-}
-
-void Runtime::SetFocused(bool focused) {
-  _focused = focused;
-  ApplyPauseState();
-}
-
 void Runtime::ApplyPauseState() {
   if (!_sessionActive || !Alive(_videoPlayer)) return;
-  bool const suspended = _paused || _applicationPaused || !_focused;
+  bool const suspended = _paused;
   if (suspended) {
     if (_videoPlayer->get_isPlaying()) _videoPlayer->Pause();
     PaperLogger.info("Cinema playback suspended songTime={:.3f}s",
@@ -919,10 +851,8 @@ void Runtime::ApplyPauseState() {
 void Runtime::SetEnabled(bool enabled) {
   RefreshCapabilityRegistration(enabled);
   if (!enabled) {
-    StopSession();
+    StopSession(true);
   } else {
-    EnsureBehaviour();
-    LoadAssets();
     LoadSelectedConfig();
   }
 }
@@ -940,18 +870,9 @@ void Runtime::RefreshCapabilityRegistration(bool enabled) {
   }
 }
 
-void Runtime::StopSession() {
-  if (Alive(_videoPlayer)) {
+void Runtime::StopSession(bool canTouchUnity) {
+  if (canTouchUnity && Alive(_videoPlayer)) {
     try {
-      if (_frameReadyDelegate != nullptr) {
-        _videoPlayer->remove_frameReady(_frameReadyDelegate);
-      }
-      if (_prepareCompletedDelegate != nullptr) {
-        _videoPlayer->remove_prepareCompleted(_prepareCompletedDelegate);
-      }
-      if (_errorReceivedDelegate != nullptr) {
-        _videoPlayer->remove_errorReceived(_errorReceivedDelegate);
-      }
       _videoPlayer->set_sendFrameReadyEvents(false);
       _videoPlayer->Stop();
       _videoPlayer->set_targetTexture(nullptr);
@@ -959,7 +880,7 @@ void Runtime::StopSession() {
       PaperLogger.warn("Cinema caught an exception while stopping VideoPlayer");
     }
   }
-  try {
+  if (canTouchUnity) try {
     for (auto& screen : _screens) {
       if (Alive(screen.material)) UnityEngine::Object::Destroy(screen.material);
       if (Alive(screen.mesh)) UnityEngine::Object::Destroy(screen.mesh);
@@ -979,9 +900,6 @@ void Runtime::StopSession() {
   _audioController = nullptr;
   _playbackObject = nullptr;
   _videoPlayer = nullptr;
-  _frameReadyDelegate = nullptr;
-  _prepareCompletedDelegate = nullptr;
-  _errorReceivedDelegate = nullptr;
   _videoTexture = nullptr;
   _sessionActive = false;
   _firstFrameReady = false;
@@ -993,8 +911,11 @@ void Runtime::StopSession() {
   _lastSyncRealtime = -1000.0f;
 }
 
-void Runtime::OnBehaviourDestroyed(RuntimeBehaviour* behaviour) {
-  if (_behaviour == behaviour) _behaviour = nullptr;
+void Runtime::RetireGameplay(
+    GlobalNamespace::AudioTimeSyncController* audioController,
+    bool canTouchUnity) {
+  if (_audioController != audioController) return;
+  StopSession(canTouchUnity);
 }
 
 }  // namespace CinemaQuest

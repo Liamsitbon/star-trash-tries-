@@ -42,8 +42,8 @@ jobs:
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 tests/cinema_contract_check.py
-            qmod: release/Cinema-Quest-0.1.2.qmod
-            release_name: Cinema-Quest-0.1.2.qmod
+            qmod: release/Cinema-Quest-0.2.0.qmod
+            release_name: Cinema-Quest-0.2.0.qmod
           - name: Nexora
             project: Nexora/Current-Source
             build: bash scripts/build.sh

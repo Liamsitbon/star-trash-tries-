@@ -15,6 +15,29 @@ MAKE_HOOK_MATCH(AudioTimeSyncController_StartSong,
   }
 }
 
+MAKE_HOOK_MATCH(AudioTimeSyncController_Update,
+                &GlobalNamespace::AudioTimeSyncController::Update, void,
+                GlobalNamespace::AudioTimeSyncController* self) {
+  AudioTimeSyncController_Update(self);
+  if (GetCinemaEnabled()) CinemaQuest::Runtime::Instance().Update();
+}
+
+MAKE_HOOK_MATCH(AudioTimeSyncController_StopSong,
+                &GlobalNamespace::AudioTimeSyncController::StopSong, void,
+                GlobalNamespace::AudioTimeSyncController* self) {
+  AudioTimeSyncController_StopSong(self);
+  CinemaQuest::Runtime::Instance().RetireGameplay(self, true);
+}
+
+MAKE_HOOK_MATCH(AudioTimeSyncController_OnDestroy,
+                &GlobalNamespace::AudioTimeSyncController::OnDestroy, void,
+                GlobalNamespace::AudioTimeSyncController* self) {
+  AudioTimeSyncController_OnDestroy(self);
+  // Scene teardown can invalidate Unity objects before peer hooks finish. At
+  // this point only abandon raw references; scene ownership performs cleanup.
+  CinemaQuest::Runtime::Instance().RetireGameplay(self, false);
+}
+
 MAKE_HOOK_MATCH(AudioTimeSyncController_Pause,
                 &GlobalNamespace::AudioTimeSyncController::Pause, void,
                 GlobalNamespace::AudioTimeSyncController* self) {
@@ -37,10 +60,13 @@ void InstallHooks() {
   if (gHooksInstalled) return;
   gHooksInstalled = true;
   INSTALL_HOOK(PaperLogger, AudioTimeSyncController_StartSong);
+  INSTALL_HOOK(PaperLogger, AudioTimeSyncController_Update);
+  INSTALL_HOOK(PaperLogger, AudioTimeSyncController_StopSong);
+  INSTALL_HOOK(PaperLogger, AudioTimeSyncController_OnDestroy);
   INSTALL_HOOK(PaperLogger, AudioTimeSyncController_Pause);
   INSTALL_HOOK(PaperLogger, AudioTimeSyncController_Resume);
   PaperLogger.info(
-      "Cinema gameplay, pause and practice-sync hooks installed; global scene-transition hook intentionally disabled");
+      "Cinema gameplay hooks installed: polling update, pause/resume, StopSong cleanup and pointer-only OnDestroy retirement");
 }
 
 }  // namespace CinemaQuest

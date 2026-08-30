@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,8 +19,6 @@
 #include "beatsaber-hook/shared/utils/typedefs-wrappers.hpp"
 
 namespace CinemaQuest {
-
-class RuntimeBehaviour;
 
 struct ScreenPlacement {
   UnityEngine::Vector3 position = UnityEngine::Vector3(0.0f, 12.4f, 67.8f);
@@ -46,6 +43,8 @@ struct VideoConfig {
   float exposure = 1.0f;
   float gamma = 1.0f;
   float opacity = 1.0f;
+  float bloom = 0.0f;
+  std::optional<float> endVideoAt;
   ScreenPlacement mainScreen{};
   std::vector<ScreenPlacement> additionalScreens;
 };
@@ -70,21 +69,15 @@ public:
   void RefreshCapabilityRegistration(bool enabled);
   void BeginGameplay(GlobalNamespace::AudioTimeSyncController* audioController,
                      float startTimeOffset);
+  void RetireGameplay(GlobalNamespace::AudioTimeSyncController* audioController,
+                      bool canTouchUnity);
   void SetPaused(bool paused);
-  void SetApplicationPaused(bool paused);
-  void SetFocused(bool focused);
   void SetEnabled(bool enabled);
   void Update();
-  void OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
-                         std::int64_t frameIndex);
-  void OnVideoPrepared(UnityEngine::Video::VideoPlayer* player);
-  void OnVideoError(UnityEngine::Video::VideoPlayer* player, StringW message);
-  void OnBehaviourDestroyed(RuntimeBehaviour* behaviour);
 
 private:
   Runtime() = default;
 
-  void EnsureBehaviour();
   void LoadAssets();
   void LoadSelectedConfig();
   std::optional<VideoConfig> ParseConfig(std::string const& mapRoot) const;
@@ -95,29 +88,25 @@ private:
                                       int subsurfaces) const;
   void RebuildScreenMeshes(float aspectRatio);
   void ApplyMaterialProperties(ScreenInstance& screen) const;
+  void ApplyPlaybackFade(float value) const;
   void SetScreensVisible(bool visible);
   void ApplyPauseState();
-  void StopSession();
+  void StopSession(bool canTouchUnity);
   double DesiredVideoTime(float songTime) const;
   float DesiredPlaybackSpeed() const;
 
-  RuntimeBehaviour* _behaviour = nullptr;
   SafePtrUnity<UnityEngine::AssetBundle> _assetBundle;
   SafePtrUnity<UnityEngine::Shader> _videoShader;
   GlobalNamespace::AudioTimeSyncController* _audioController = nullptr;
   UnityEngine::GameObject* _playbackObject = nullptr;
   UnityEngine::Video::VideoPlayer* _videoPlayer = nullptr;
-  UnityEngine::Video::VideoPlayer_FrameReadyEventHandler* _frameReadyDelegate = nullptr;
-  UnityEngine::Video::VideoPlayer_EventHandler* _prepareCompletedDelegate = nullptr;
-  UnityEngine::Video::VideoPlayer_ErrorEventHandler* _errorReceivedDelegate = nullptr;
   UnityEngine::RenderTexture* _videoTexture = nullptr;
   std::vector<ScreenInstance> _screens;
   std::optional<VideoConfig> _selectedConfig;
   std::string _selectedMapRoot;
   bool _sessionActive = false;
+  bool _initialized = false;
   bool _paused = false;
-  bool _applicationPaused = false;
-  bool _focused = true;
   bool _firstFrameReady = false;
   bool _playIssued = false;
   bool _slowStartPending = false;
