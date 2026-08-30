@@ -260,14 +260,18 @@ void Runtime::HandleLevelSelected(SongCore::API::LevelSelect::LevelWasSelectedEv
   // down many Unity objects. Never probe, restore, Release(), or Destroy() raw
   // pointers from that old scene here: the native object can already be gone
   // even when the managed wrapper is still non-null. Drop those references
-  // first, then unload only the AssetBundle container. Loaded assets are left
-  // for Unity's normal unused-asset collection instead of being invalidated
-  // underneath a later cleanup pass.
+  // first, then retire the old bundle and its loaded asset objects.  Keeping
+  // those objects alive with Unload(false) made every browsed Vivify map add
+  // another complete bundle to Quest's process RSS.  Android then killed Beat
+  // Saber with LOW_MEMORY after only a few map changes.  ResetRuntime above is
+  // pointer-free for this late-transition path and clears every Vivify-owned
+  // asset/scene reference before the immediate bundle retirement.
   ResetRuntime(ResetMode::LateSceneTransition);
   if (changingLevel) {
     if (_mainBundle != nullptr && UnityEngine::Object::op_Implicit_bool(_mainBundle)) {
-      _mainBundle->Unload(false);
+      _mainBundle->Unload(true);
       _mainBundle = nullptr;
+      VIVIFY_DEBUG("Vivify retired the previous map bundle and released its loaded assets");
     }
     _preloadedBundlePath.clear();
   }
@@ -556,7 +560,14 @@ bool Runtime::PreloadBundle(std::string const& bundlePath) {
     return true;
   }
   if (_mainBundle != nullptr && UnityEngine::Object::op_Implicit_bool(_mainBundle)) {
-    _mainBundle->Unload(false);
+    // PreloadBundle may replace a failed/non-standard candidate while the map
+    // is still selected. No gameplay instance owns these preload-only assets,
+    // so retaining them would recreate the same cross-map memory leak.
+    _assets.clear();
+    _assetsByName.clear();
+    _ambiguousAssetAliases.clear();
+    _supportedShadersByName.clear();
+    _mainBundle->Unload(true);
     _mainBundle = nullptr;
   }
   _preloadedBundlePath = bundlePath;

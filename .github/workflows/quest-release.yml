@@ -56,8 +56,8 @@ jobs:
             build: pwsh -NoProfile -File scripts/build.ps1 -clean
             package: python3 scripts/package_qmod.py
             check: VIVIFY_SKIP_HOST_TESTS=1 bash scripts/verify-port-source.sh
-            qmod: release/Vivify-Quest-0.6.9.qmod
-            release_name: Vivify-Quest-0.6.9.qmod
+            qmod: release/Vivify-Quest-0.6.10.qmod
+            release_name: Vivify-Quest-0.6.10.qmod
           - name: NoodleExtensions
             project: NE-Fixed/Current-Source
             build: bash scripts/build.sh --release --clean

@@ -230,6 +230,8 @@ def check_source() -> None:
     requirements = {
         "desktop bundle exclusion": "IsDesktopBundleName(p)" in assets,
         "custom-to-official bundle retirement": "incomingLevelPath != _selectedLevelPath" in assets,
+        "cross-map bundle assets released": assets.count("_mainBundle->Unload(true)") >= 2
+        and "_mainBundle->Unload(false);" not in assets,
         "HUD renderer ownership": "_alwaysVisibleQuadDisabledRenderers" in internal
         and "renderer->set_enabled(false)" in core,
         "full stereo-array copy": "QueueStereoArrayCopy" in post

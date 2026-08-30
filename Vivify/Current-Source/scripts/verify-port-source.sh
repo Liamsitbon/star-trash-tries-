@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-expected_version="0.6.9"
+expected_version="0.6.10"
 expected_qpm_config_version="0.4.0"
 
 if [[ "${VIVIFY_SKIP_HOST_TESTS:-0}" == "1" ]]; then
@@ -85,6 +85,7 @@ required_patterns=(
   'noteRefreshCandidates'
   'QuestModInterop::InstalledPeers'
   'Vivify interop:'
+  '_mainBundle->Unload(true)'
 )
 for pattern in "${required_patterns[@]}"; do
   rg -q -F "$pattern" "$project_dir/include" "$project_dir/src" "$project_dir/scripts"
