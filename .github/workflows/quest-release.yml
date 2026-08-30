@@ -64,7 +64,7 @@ jobs:
             package: bash scripts/buildQMOD.sh
             check: bash scripts/validateProject.sh
             qmod: NoodleExtensions.qmod
-            release_name: NoodleExtensions-Quest-1.8.11.qmod
+            release_name: NoodleExtensions-Quest-1.8.12.qmod
 
     steps:
       - name: Check out source
