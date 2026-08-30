@@ -1,0 +1,158 @@
+name: Build Quest QMOD release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub Release tag
+        required: true
+        default: quest-mods-1.40.8_7379
+  push:
+    tags:
+      - "quest-mods-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quest-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Validate shared contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate optional interoperability
+        run: python3 tests/interop_contract_check.py
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: contract
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Cinema
+            project: Cinema/Current-Source
+            build: bash scripts/build.sh
+            package: python3 scripts/package_qmod.py
+            check: python3 tests/cinema_contract_check.py
+            qmod: release/Cinema-Quest-0.1.2.qmod
+            release_name: Cinema-Quest-0.1.2.qmod
+          - name: Nexora
+            project: Nexora/Current-Source
+            build: bash scripts/build.sh
+            package: python3 scripts/package_qmod.py
+            check: python3 scripts/validate_contract.py
+            qmod: release/Nexora-Quest-0.2.6.qmod
+            release_name: Nexora-Quest-0.2.6.qmod
+          - name: Vivify
+            project: Vivify/Current-Source
+            build: pwsh -NoProfile -File scripts/build.ps1 -clean
+            package: python3 scripts/package_qmod.py
+            check: VIVIFY_SKIP_HOST_TESTS=1 bash scripts/verify-port-source.sh
+            qmod: release/Vivify-Quest-0.6.9.qmod
+            release_name: Vivify-Quest-0.6.9.qmod
+          - name: NoodleExtensions
+            project: NE-Fixed/Current-Source
+            build: bash scripts/build.sh --release --clean
+            package: bash scripts/buildQMOD.sh
+            check: bash scripts/validateProject.sh
+            qmod: NoodleExtensions.qmod
+            release_name: NoodleExtensions-Quest-1.8.11.qmod
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build zip unzip file
+
+      - name: Restore QPM dependencies and NDK
+        uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: ${{ matrix.project }}
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: true
+
+      - name: Build ARM64 library
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.build }}
+
+      - name: Package QMOD
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.package }}
+
+      - name: Run project contract checks
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.check }}
+
+      - name: Verify Quest-only package
+        env:
+          QMOD_PATH: ${{ matrix.project }}/${{ matrix.qmod }}
+        run: |
+          unzip -tq "$QMOD_PATH"
+          if unzip -Z1 "$QMOD_PATH" | grep -Eiq '\.(dll|exe|dylib|pdb)$'; then
+            echo "PC or macOS payload found in $QMOD_PATH" >&2
+            exit 1
+          fi
+          unzip -p "$QMOD_PATH" mod.json | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["packageVersion"] == "1.40.8_7379"'
+          so_entry="$(unzip -Z1 "$QMOD_PATH" | grep -E '\.so$' | head -n 1)"
+          unzip -p "$QMOD_PATH" "$so_entry" | file - | grep -E 'ELF 64-bit.*ARM aarch64'
+
+      - name: Stage release asset
+        env:
+          QMOD_PATH: ${{ matrix.project }}/${{ matrix.qmod }}
+          RELEASE_NAME: ${{ matrix.release_name }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/quest-release"
+          cp "$QMOD_PATH" "$RUNNER_TEMP/quest-release/$RELEASE_NAME"
+
+      - name: Upload QMOD artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qmod-${{ matrix.name }}
+          path: ${{ runner.temp }}/quest-release/${{ matrix.release_name }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download built QMODs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: qmod-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: dist
+        run: sha256sum *.qmod > SHA256SUMS
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/*.qmod dist/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" dist/*.qmod dist/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Quest mods for Beat Saber 1.40.8_7379" \
+              --generate-notes
+          fi

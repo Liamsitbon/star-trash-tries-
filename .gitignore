@@ -106,9 +106,11 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
 # Beat Saber bundle generated data and local evidence. Keep source, manifests,
-# Unity project assets, and the explicitly published root release artifacts.
+# and Unity project assets in Git; QMODs are built only by GitHub Actions and
+# published as GitHub Release assets.
 **/build/
 **/extern/
+**/release/
 **/diagnostics/
 **/unity/Library/
 **/unity/Logs/
@@ -116,5 +118,6 @@ InitTestScene*.unity*
 **/unity/UserSettings/
 **/__pycache__/
 *.DS_Store
+*.qmod
 /Dynasty/
 /runtime-video-audit-*/
