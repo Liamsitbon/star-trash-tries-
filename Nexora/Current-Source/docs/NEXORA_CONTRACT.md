@@ -12,8 +12,9 @@ asset bundles.
   focus changes, and map/scene retirement.
 - Support multiple layers, preload/cross-fade, visual events, mono, over-under,
   and side-by-side projection.
-- Support MP4 media decoded by Android/Unity VideoPlayer, principally H.264 or
-  HEVC. Codec/profile/level support is still device-specific.
+- Support local MP4 media through Android MediaPlayer and SurfaceTexture,
+  principally H.264 or HEVC. Nexora does not instantiate Unity VideoPlayer or
+  bundle a desktop codec stack; codec/profile/level support is device-specific.
 - Apply camera-event visuals through the Quest Multiview-capable dome shader.
   Nexora must not attach the desktop-style `OnRenderImage` framebuffer path.
 

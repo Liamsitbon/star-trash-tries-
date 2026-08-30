@@ -17,15 +17,11 @@
 #include "UnityEngine/MeshRenderer.hpp"
 #include "UnityEngine/Object.hpp"
 #include "UnityEngine/Quaternion.hpp"
-#include "UnityEngine/RenderTextureFormat.hpp"
 #include "UnityEngine/Texture.hpp"
 #include "UnityEngine/TextureWrapMode.hpp"
 #include "UnityEngine/Time.hpp"
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/Vector2.hpp"
-#include "UnityEngine/Video/VideoAudioOutputMode.hpp"
-#include "UnityEngine/Video/VideoRenderMode.hpp"
-#include "UnityEngine/Video/VideoSource.hpp"
 #include "beatsaber-hook/shared/config/rapidjson-utils.hpp"
 #include "songcore/shared/Capabilities.hpp"
 #include "songcore/shared/SongCore.hpp"
@@ -41,8 +37,9 @@ constexpr std::string_view kAlternateAssetPath =
 constexpr std::string_view kShaderAsset =
     "assets/cinema/shaders/cinemavideoscreen.shader";
 constexpr float kPrepareTimeoutSeconds = 20.0f;
-constexpr int kRenderTextureWidth = 1920;
-constexpr int kRenderTextureHeight = 1080;
+constexpr float kFirstFrameTimeoutSeconds = 8.0f;
+constexpr int kNativeVideoWidth = 1920;
+constexpr int kNativeVideoHeight = 1080;
 
 int sMainTex = 0;
 int sBrightness = 0;
@@ -481,32 +478,11 @@ void Runtime::CreatePlaybackGraph() {
   _playbackObject = UnityEngine::GameObject::New_ctor(u"CinemaQuestPlayback");
   if (!Alive(_playbackObject)) throw std::runtime_error("playback GameObject creation failed");
 
-  _videoPlayer =
-      _playbackObject->AddComponent<UnityEngine::Video::VideoPlayer*>();
-  if (!Alive(_videoPlayer)) throw std::runtime_error("Unity VideoPlayer is unavailable");
-
-  _videoTexture = UnityEngine::RenderTexture::New_ctor(
-      kRenderTextureWidth, kRenderTextureHeight, 0,
-      UnityEngine::RenderTextureFormat::ARGB32);
-  if (!Alive(_videoTexture)) throw std::runtime_error("video RenderTexture allocation failed");
-  _videoTexture->set_name(u"CinemaQuestVideoTexture");
-  _videoTexture->set_filterMode(UnityEngine::FilterMode::Bilinear);
-  _videoTexture->set_wrapMode(UnityEngine::TextureWrapMode::Mirror);
-  if (!_videoTexture->Create()) throw std::runtime_error("video RenderTexture creation failed");
-
-  _videoPlayer->set_source(UnityEngine::Video::VideoSource::Url);
-  _videoPlayer->set_renderMode(UnityEngine::Video::VideoRenderMode::RenderTexture);
-  _videoPlayer->set_targetTexture(_videoTexture);
-  _videoPlayer->set_audioOutputMode(UnityEngine::Video::VideoAudioOutputMode::None);
-  _videoPlayer->set_playOnAwake(false);
-  _videoPlayer->set_waitForFirstFrame(true);
-  _videoPlayer->set_isLooping(_selectedConfig->loop);
-  if (_videoPlayer->get_canSetSkipOnDrop()) _videoPlayer->set_skipOnDrop(true);
-
-  // Poll VideoPlayer from AudioTimeSyncController::Update instead of creating
-  // IL2CPP delegates/custom types. This keeps disabled startup and scene
-  // transitions out of custom-types registration entirely.
-  _videoPlayer->set_sendFrameReadyEvents(false);
+  if (!_nativeVideo) {
+    _nativeVideo = QuestNativeVideo::Player::Create(
+        kNativeVideoWidth, kNativeVideoHeight, "Cinema");
+  }
+  if (!_nativeVideo) throw std::runtime_error("Android native video backend unavailable");
 
   CreateScreen(_selectedConfig->mainScreen);
   for (auto const& placement : _selectedConfig->additionalScreens) {
@@ -514,12 +490,11 @@ void Runtime::CreatePlaybackGraph() {
   }
   SetScreensVisible(false);
 
-  _videoPlayer->set_url(StringW(_selectedConfig->videoPath));
   _prepareStartedRealtime = UnityEngine::Time::get_realtimeSinceStartup();
-  _videoPlayer->Prepare();
-  PaperLogger.info("Cinema preparing local video '{}' via {}x{} RenderTexture",
+  _nativeVideo->Open(_selectedConfig->videoPath, _selectedConfig->loop);
+  PaperLogger.info("Cinema preparing local video '{}' via Android MediaPlayer surface {}x{}",
                    std::filesystem::path(_selectedConfig->videoPath).filename().string(),
-                   kRenderTextureWidth, kRenderTextureHeight);
+                   kNativeVideoWidth, kNativeVideoHeight);
 }
 
 void Runtime::CreateScreen(ScreenPlacement const& placement) {
@@ -658,7 +633,9 @@ void Runtime::RebuildScreenMeshes(float aspectRatio) {
 void Runtime::ApplyMaterialProperties(ScreenInstance& screen) const {
   if (!Alive(screen.material) || !_selectedConfig) return;
   screen.material->set_renderQueue(1998);
-  screen.material->SetTexture(sMainTex, _videoTexture);
+  if (_nativeVideo && _nativeVideo->Texture() != nullptr) {
+    screen.material->SetTexture(sMainTex, _nativeVideo->Texture());
+  }
   // Quest's verified bundle has no PC BloomPrePass. Preserve the authored
   // bloom intent as a bounded luminance gain without allocating a camera pass.
   screen.material->SetFloat(
@@ -694,8 +671,8 @@ double Runtime::DesiredVideoTime(float songTime) const {
   double desired = static_cast<double>(songTime) *
                        static_cast<double>(_selectedConfig->playbackSpeed) +
                    static_cast<double>(_selectedConfig->offsetSeconds);
-  if (_selectedConfig->loop && Alive(_videoPlayer)) {
-    double const length = _videoPlayer->get_length();
+  if (_selectedConfig->loop && _nativeVideo) {
+    double const length = _nativeVideo->DurationSeconds();
     if (length > 0.01 && desired >= 0.0) desired = std::fmod(desired, length);
   }
   return desired;
@@ -710,26 +687,39 @@ float Runtime::DesiredPlaybackSpeed() const {
 void Runtime::Update() {
   if (!_sessionActive) return;
   try {
-    if (!_selectedConfig || !GetCinemaEnabled() || !Alive(_videoPlayer) ||
+    if (!_selectedConfig || !GetCinemaEnabled() || !_nativeVideo ||
         _decoderFailed) {
       return;
     }
+    _nativeVideo->Tick();
     float const realtime = UnityEngine::Time::get_realtimeSinceStartup();
-    if (!_videoPlayer->get_isPrepared()) {
+    if (_nativeVideo->Failed()) {
+      _decoderFailed = true;
+      SetScreensVisible(false);
+      PaperLogger.error("Cinema native decoder failed for '{}': {}",
+                        std::filesystem::path(_selectedConfig->videoPath)
+                            .filename()
+                            .string(),
+                        _nativeVideo->Error());
+      _nativeVideo->Stop();
+      return;
+    }
+    if (!_nativeVideo->IsPrepared()) {
       if (realtime - _prepareStartedRealtime > kPrepareTimeoutSeconds) {
         _decoderFailed = true;
         SetScreensVisible(false);
         PaperLogger.error(
-            "Cinema decoder timeout after {}s for '{}'; inspect AndroidVideoMedia in logcat",
+            "Cinema Android MediaPlayer timeout after {}s for '{}'",
             kPrepareTimeoutSeconds,
             std::filesystem::path(_selectedConfig->videoPath).filename().string());
+        _nativeVideo->Stop();
       }
       return;
     }
 
     if (!_aspectApplied) {
-      std::uint32_t const width = _videoPlayer->get_width();
-      std::uint32_t const height = _videoPlayer->get_height();
+      int const width = _nativeVideo->VideoWidth();
+      int const height = _nativeVideo->VideoHeight();
       float aspect = 16.0f / 9.0f;
       if (width > 0 && height > 0) {
         aspect = Clamp(static_cast<float>(width) / static_cast<float>(height),
@@ -746,10 +736,14 @@ void Runtime::Update() {
 
     float const songTime = _audioController->get_songTime();
     double const desired = DesiredVideoTime(songTime);
-    double const length = _videoPlayer->get_length();
+    if (!std::isfinite(songTime) || !std::isfinite(desired)) {
+      SetScreensVisible(false);
+      PaperLogger.warn("Cinema ignored a non-finite song clock value");
+      return;
+    }
+    double const length = _nativeVideo->DurationSeconds();
     if (desired < 0.0) {
-      if (_videoPlayer->get_isPlaying()) _videoPlayer->Pause();
-      if (_videoPlayer->get_canSetTime()) _videoPlayer->set_time(0.0);
+      if (_nativeVideo->IsPlaying()) _nativeVideo->Pause();
       _playIssued = false;
       SetScreensVisible(false);
       return;
@@ -760,7 +754,7 @@ void Runtime::Update() {
                                           ? length
                                           : -1.0);
     if (authoredEnd > 0.0 && desired >= authoredEnd) {
-      if (_videoPlayer->get_isPlaying()) _videoPlayer->Pause();
+      if (_nativeVideo->IsPlaying()) _nativeVideo->Pause();
       SetScreensVisible(false);
       return;
     }
@@ -769,48 +763,62 @@ void Runtime::Update() {
                           : 1.0f);
 
     if (!_playIssued) {
-      if (_videoPlayer->get_canSetTime()) _videoPlayer->set_time(desired);
       float const speed = DesiredPlaybackSpeed();
-      _slowStartPending = speed < 0.999f && desired > 0.02;
-      if (_videoPlayer->get_canSetPlaybackSpeed()) {
-        _videoPlayer->set_playbackSpeed(_slowStartPending ? 1.0f : speed);
-      }
-      _videoPlayer->Play();
+      bool const needsInitialSeek = desired > 0.05;
+      if (needsInitialSeek) _nativeVideo->Seek(desired);
+      _nativeVideo->Play();
+      _nativeVideo->SetPlaybackSpeed(speed);
       _playIssued = true;
+      _playStartedRealtime = realtime;
       _lastSyncRealtime = realtime;
-      PaperLogger.info("Cinema playback issued target={:.3f}s speed={:.3f} stagedSlowStart={}",
-                       desired, speed, _slowStartPending);
+      PaperLogger.info(
+          "Cinema native playback issued target={:.3f}s speed={:.3f} initialSeek={}",
+          desired, speed, needsInitialSeek);
       return;
     }
 
-    if (!_firstFrameReady && _videoPlayer->get_frame() >= 0) {
-      _firstFrameReady = true;
-      if (_slowStartPending && _videoPlayer->get_canSetPlaybackSpeed()) {
-        _videoPlayer->set_playbackSpeed(DesiredPlaybackSpeed());
-        _slowStartPending = false;
-      }
-      SetScreensVisible(true);
-      PaperLogger.info("Cinema first decoded frame revealed {} screen(s) at frame {}",
-                       _screens.size(), _videoPlayer->get_frame());
+    if (!_firstFrameReady && _playStartedRealtime > 0.0f &&
+        realtime - _playStartedRealtime > kFirstFrameTimeoutSeconds) {
+      _decoderFailed = true;
+      SetScreensVisible(false);
+      PaperLogger.error(
+          "Cinema native decoder produced no first frame within {}s for '{}'",
+          kFirstFrameTimeoutSeconds,
+          std::filesystem::path(_selectedConfig->videoPath).filename().string());
+      _nativeVideo->Stop();
+      return;
     }
 
-    if (!_videoPlayer->get_isPlaying()) {
-      _videoPlayer->Play();
-    }
-    if (_videoPlayer->get_canSetPlaybackSpeed() && !_slowStartPending) {
-      float const speed = DesiredPlaybackSpeed();
-      if (std::fabs(_videoPlayer->get_playbackSpeed() - speed) > 0.005f) {
-        _videoPlayer->set_playbackSpeed(speed);
+    if (!_firstFrameReady && _nativeVideo->HasFrame() &&
+        _nativeVideo->Texture() != nullptr) {
+      _firstFrameReady = true;
+      for (auto& screen : _screens) {
+        if (Alive(screen.material)) {
+          screen.material->SetTexture(sMainTex, _nativeVideo->Texture());
+        }
       }
+      SetScreensVisible(true);
+      PaperLogger.info(
+          "Cinema first native frame revealed {} screen(s), serial={}",
+          _screens.size(), _nativeVideo->FrameSerial());
     }
-    if (!_videoPlayer->get_canSetTime() ||
-        realtime - _lastSyncRealtime < 0.5f) {
+
+    // A transient Android decoder pause must not leave a map permanently
+    // frozen. Authored pause/end paths return above, so this recovery is only
+    // reached while normal playback is still requested.
+    if (!_nativeVideo->IsPlaying()) _nativeVideo->Play();
+
+    float const speed = DesiredPlaybackSpeed();
+    if (std::fabs(_nativeVideo->PlaybackSpeed() - speed) > 0.005f) {
+      _nativeVideo->SetPlaybackSpeed(speed);
+    }
+    if (realtime - _lastSyncRealtime < 0.5f) {
       return;
     }
     _lastSyncRealtime = realtime;
-    double const actual = _videoPlayer->get_time();
+    double const actual = _nativeVideo->TimeSeconds();
     if (std::isfinite(actual) && std::fabs(actual - desired) > 0.12) {
-      _videoPlayer->set_time(desired);
+      _nativeVideo->Seek(desired);
       PaperLogger.info("Cinema resync drift={:.3f}s target={:.3f}s song={:.3f}s",
                        std::fabs(actual - desired), desired, songTime);
     }
@@ -835,16 +843,21 @@ void Runtime::SetPaused(bool paused) {
 }
 
 void Runtime::ApplyPauseState() {
-  if (!_sessionActive || !Alive(_videoPlayer)) return;
+  if (!_sessionActive || !_nativeVideo) return;
   bool const suspended = _paused;
   if (suspended) {
-    if (_videoPlayer->get_isPlaying()) _videoPlayer->Pause();
+    if (_nativeVideo->IsPlaying()) _nativeVideo->Pause();
     PaperLogger.info("Cinema playback suspended songTime={:.3f}s",
                      Alive(_audioController) ? _audioController->get_songTime() : -1.0f);
     return;
   }
   _lastSyncRealtime = -1000.0f;
-  if (_playIssued && _videoPlayer->get_isPrepared()) _videoPlayer->Play();
+  if (_playIssued && _nativeVideo->IsPrepared()) {
+    _nativeVideo->Play();
+    if (!_firstFrameReady) {
+      _playStartedRealtime = UnityEngine::Time::get_realtimeSinceStartup();
+    }
+  }
   PaperLogger.info("Cinema playback resumed; immediate song-time resync scheduled");
 }
 
@@ -871,24 +884,12 @@ void Runtime::RefreshCapabilityRegistration(bool enabled) {
 }
 
 void Runtime::StopSession(bool canTouchUnity) {
-  if (canTouchUnity && Alive(_videoPlayer)) {
-    try {
-      _videoPlayer->set_sendFrameReadyEvents(false);
-      _videoPlayer->Stop();
-      _videoPlayer->set_targetTexture(nullptr);
-    } catch (...) {
-      PaperLogger.warn("Cinema caught an exception while stopping VideoPlayer");
-    }
-  }
+  if (_nativeVideo) _nativeVideo->Stop();
   if (canTouchUnity) try {
     for (auto& screen : _screens) {
       if (Alive(screen.material)) UnityEngine::Object::Destroy(screen.material);
       if (Alive(screen.mesh)) UnityEngine::Object::Destroy(screen.mesh);
       if (Alive(screen.object)) UnityEngine::Object::Destroy(screen.object);
-    }
-    if (Alive(_videoTexture)) {
-      _videoTexture->Release();
-      UnityEngine::Object::Destroy(_videoTexture);
     }
     if (Alive(_playbackObject)) UnityEngine::Object::Destroy(_playbackObject);
   } catch (...) {
@@ -899,15 +900,13 @@ void Runtime::StopSession(bool canTouchUnity) {
 
   _audioController = nullptr;
   _playbackObject = nullptr;
-  _videoPlayer = nullptr;
-  _videoTexture = nullptr;
   _sessionActive = false;
   _firstFrameReady = false;
   _playIssued = false;
-  _slowStartPending = false;
   _aspectApplied = false;
   _decoderFailed = false;
   _prepareStartedRealtime = 0.0f;
+  _playStartedRealtime = 0.0f;
   _lastSyncRealtime = -1000.0f;
 }
 

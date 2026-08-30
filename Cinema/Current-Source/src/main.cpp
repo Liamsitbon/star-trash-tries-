@@ -34,11 +34,11 @@ void EnsureConfigDefaults() {
   if (!document.IsObject()) document.SetObject();
   auto& allocator = document.GetAllocator();
   auto enabled = document.FindMember("enabled");
-  auto safetyReset = document.FindMember("safetyReset_0_2_0");
+  auto safetyReset = document.FindMember("safetyReset_0_2_1");
 
-  // Cinema 0.1.x could register and initialize runtime work during Scotland2's
-  // first Unity destruction callback. Reset once so 0.2.0 always gets a clean,
-  // menu-only first boot before the user opts in.
+  // Cinema 0.2.1 replaces Unity VideoPlayer with a native Android surface.
+  // Reset once so an older enabled setting cannot activate a new decoder path
+  // before the user has seen the menu and explicitly opted in.
   bool const mustApplySafetyReset =
       safetyReset == document.MemberEnd() || !safetyReset->value.IsBool() ||
       !safetyReset->value.GetBool();
@@ -49,14 +49,14 @@ void EnsureConfigDefaults() {
       enabled->value.SetBool(false);
     }
     if (safetyReset == document.MemberEnd()) {
-      document.AddMember("safetyReset_0_2_0", true, allocator);
+      document.AddMember("safetyReset_0_2_1", true, allocator);
     } else {
       safetyReset->value.SetBool(true);
     }
     gEnabled = false;
     configuration.Write();
     PaperLogger.warn(
-        "Cinema 0.2.0 safety reset applied; first boot is menu-only until Cinema is enabled explicitly");
+        "Cinema 0.2.1 native-decoder safety reset applied; first boot is menu-only until Cinema is enabled explicitly");
     return;
   }
 
@@ -186,6 +186,6 @@ MOD_EXTERN_FUNC void late_load() noexcept {
     CinemaQuest::Runtime::Instance().LateLoad();
   } else {
     PaperLogger.info(
-        "Cinema disabled startup complete: no hooks, SongCore callbacks, AssetBundle, RenderTexture, VideoPlayer or custom type registration");
+        "Cinema disabled startup complete: no hooks, SongCore callbacks, AssetBundle, native decoder or custom type registration");
   }
 }

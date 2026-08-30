@@ -19,28 +19,22 @@
 #include "UnityEngine/MeshRenderer.hpp"
 #include "UnityEngine/Object.hpp"
 #include "UnityEngine/Quaternion.hpp"
-#include "UnityEngine/FilterMode.hpp"
-#include "UnityEngine/RenderTexture.hpp"
-#include "UnityEngine/RenderTextureFormat.hpp"
 #include "UnityEngine/Shader.hpp"
 #include "UnityEngine/Texture.hpp"
 #include "UnityEngine/Time.hpp"
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/Vector2.hpp"
-#include "UnityEngine/TextureWrapMode.hpp"
 #include "UnityEngine/SceneManagement/Scene.hpp"
 #include "UnityEngine/SceneManagement/SceneManager.hpp"
-#include "UnityEngine/Video/VideoAudioOutputMode.hpp"
-#include "UnityEngine/Video/VideoRenderMode.hpp"
-#include "UnityEngine/Video/VideoSource.hpp"
 #include "GlobalNamespace/BeatmapCallbacksUpdater.hpp"
 #include "custom-json-data/shared/CustomBeatmapData.h"
 #include "songcore/shared/Capabilities.hpp"
 #include "songcore/shared/SongCore.hpp"
-#include "custom-types/shared/delegate.hpp"
 
 namespace Nexora {
 namespace {
+
+constexpr float kFirstFrameTimeoutSeconds = 8.0f;
 
 constexpr std::string_view kAssetsPath =
     "/sdcard/ModData/com.beatgames.beatsaber/Mods/Nexora/Assets/nexoraassets.android";
@@ -911,6 +905,33 @@ void Runtime::HandleCustomEvent(
   }
 }
 
+std::shared_ptr<QuestNativeVideo::Player> Runtime::AcquireNativeVideo(
+    std::string const& domeId) {
+  for (auto const& candidate : _videoPool) {
+    if (!candidate) continue;
+    bool inUse = false;
+    for (auto const& [_, dome] : _domes) {
+      if (dome.video == candidate) {
+        inUse = true;
+        break;
+      }
+    }
+    if (!inUse) {
+      candidate->Stop();
+      return candidate;
+    }
+  }
+
+  if (_videoPool.size() >= static_cast<std::size_t>(GetMaxLayers())) {
+    return nullptr;
+  }
+  auto player = QuestNativeVideo::Player::Create(
+      kVideoTextureWidth, kVideoTextureHeight,
+      "Nexora dome " + domeId);
+  if (player) _videoPool.push_back(player);
+  return player;
+}
+
 DomeLayer* Runtime::EnsureDome(std::string const& id) {
   auto existing = _domes.find(id);
   if (existing != _domes.end()) return &existing->second;
@@ -966,79 +987,12 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
   renderer->set_receiveShadows(false);
   renderer->set_enabled(false);
 
-  auto* video = object->AddComponent<UnityEngine::Video::VideoPlayer*>();
-  if (!Alive(video)) {
+  auto video = AcquireNativeVideo(id);
+  if (!video) {
     UnityEngine::Object::Destroy(material);
     UnityEngine::Object::Destroy(object);
-    throw std::runtime_error("Unity VideoPlayer component is unavailable");
+    throw std::runtime_error("Android native video decoder pool is exhausted");
   }
-  video->set_source(UnityEngine::Video::VideoSource::Url);
-
-  // Cinema's reliable path is a decoder-owned RenderTexture, not a direct
-  // external texture sampled from VideoPlayer.texture. The latter can report
-  // prepared on Android while the custom dome keeps sampling its black
-  // placeholder. A 2:1 2048 texture is enough for the Quest display and keeps
-  // the allocation bounded even when the authored source is 4K60.
-  UnityEngine::RenderTexture* videoTexture = nullptr;
-  try {
-    videoTexture = UnityEngine::RenderTexture::New_ctor(
-        kVideoTextureWidth, kVideoTextureHeight, 0,
-        UnityEngine::RenderTextureFormat::ARGB32);
-    if (Alive(videoTexture)) {
-      videoTexture->set_name(StringW("NexoraVideoTexture_" + id));
-      videoTexture->set_filterMode(UnityEngine::FilterMode::Bilinear);
-      videoTexture->set_wrapMode(UnityEngine::TextureWrapMode::Repeat);
-      if (!videoTexture->Create()) {
-        UnityEngine::Object::Destroy(videoTexture);
-        videoTexture = nullptr;
-      }
-    }
-  } catch (...) {
-    if (Alive(videoTexture)) UnityEngine::Object::Destroy(videoTexture);
-    videoTexture = nullptr;
-  }
-  bool const renderTexturePipeline = Alive(videoTexture);
-  if (renderTexturePipeline) {
-    video->set_renderMode(UnityEngine::Video::VideoRenderMode::RenderTexture);
-    video->set_targetTexture(videoTexture);
-    if (s_propMainTex != 0) material->SetTexture(s_propMainTex, videoTexture);
-  } else {
-    // Keep a functional low-allocation fallback for devices that reject the
-    // RenderTexture. It remains hidden until an actual decoded frame exists.
-    video->set_renderMode(UnityEngine::Video::VideoRenderMode::APIOnly);
-    PaperLogger.warn("Nexora dome '{}' could not allocate the Cinema-style video texture; using APIOnly fallback", id);
-  }
-
-  video->set_audioOutputMode(UnityEngine::Video::VideoAudioOutputMode::None);
-  video->set_playOnAwake(false);
-  video->set_waitForFirstFrame(true);
-  std::function<void(UnityEngine::Video::VideoPlayer*, std::int64_t)> frameReady =
-      [](UnityEngine::Video::VideoPlayer* player, std::int64_t frameIndex) {
-        Runtime::Instance().OnVideoFrameReady(player, frameIndex);
-      };
-  auto* frameReadyDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_FrameReadyEventHandler*>(
-          frameReady);
-  video->add_frameReady(frameReadyDelegate);
-  video->set_sendFrameReadyEvents(true);
-
-  std::function<void(UnityEngine::Video::VideoPlayer*)> prepareCompleted =
-      [](UnityEngine::Video::VideoPlayer* player) {
-        Runtime::Instance().OnVideoPrepared(player);
-      };
-  auto* prepareCompletedDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_EventHandler*>(
-          prepareCompleted);
-  video->add_prepareCompleted(prepareCompletedDelegate);
-
-  std::function<void(UnityEngine::Video::VideoPlayer*, StringW)> errorReceived =
-      [](UnityEngine::Video::VideoPlayer* player, StringW message) {
-        Runtime::Instance().OnVideoError(player, message);
-      };
-  auto* errorReceivedDelegate =
-      custom_types::MakeDelegate<UnityEngine::Video::VideoPlayer_ErrorEventHandler*>(
-          errorReceived);
-  video->add_errorReceived(errorReceivedDelegate);
 
   DomeLayer layer;
   layer.id = id;
@@ -1048,18 +1002,11 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
   layer.renderer = renderer;
   layer.material = material;
   layer.video = video;
-  layer.frameReadyDelegate = frameReadyDelegate;
-  layer.prepareCompletedDelegate = prepareCompletedDelegate;
-  layer.errorReceivedDelegate = errorReceivedDelegate;
-  layer.videoTexture = videoTexture;
   layer.customShader = customShader;
-  layer.renderTexturePipeline = renderTexturePipeline;
   auto [iterator, inserted] = _domes.emplace(id, std::move(layer));
   ApplyDomeVisual(iterator->second);
-  PaperLogger.info("Nexora created procedural dome '{}' (res={} videoPipeline={} videoTexture={}x{} layers={}/{})",
-                   id, resolution, renderTexturePipeline ? "RenderTexture" : "APIOnly",
-                   renderTexturePipeline ? kVideoTextureWidth : 0,
-                   renderTexturePipeline ? kVideoTextureHeight : 0,
+  PaperLogger.info("Nexora created procedural dome '{}' (res={} videoPipeline=AndroidSurface videoTexture={}x{} layers={}/{})",
+                   id, resolution, kVideoTextureWidth, kVideoTextureHeight,
                    _domes.size(), GetMaxLayers());
   return &iterator->second;
 }
@@ -1115,7 +1062,7 @@ std::string Runtime::ResolveMediaUrl(rapidjson::Value const& json) const {
 
 void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
                         float eventTime) {
-  if (!Alive(dome.video)) throw std::runtime_error("dome VideoPlayer was destroyed");
+  if (!dome.video) throw std::runtime_error("dome native video backend is unavailable");
   auto queuedAnimation = dome.animation;
   bool const animationArrivedFirst = queuedAnimation.active &&
       std::fabs(queuedAnimation.startSongTime - eventTime) <= 0.001f;
@@ -1141,17 +1088,12 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
   dome.eventStartSongTime = eventTime;
   dome.authoredPlaybackSpeed = Clamp(ReadFloat(json, "speed").value_or(1.0f), 0.1f, 4.0f);
   dome.prepareStartedRealtime = UnityEngine::Time::get_realtimeSinceStartup();
+  dome.playStartedRealtime = 0.0f;
   dome.prepareFailed = false;
+  dome.preparedLogged = false;
   dome.textureBound = false;
   dome.pendingPlay = ReadBool(json, "autoplay").value_or(true);
-  dome.video->set_url(StringW(url));
-  dome.video->set_isLooping(dome.looping);
-  // Unity disables these notifications if a previous source completed. Enable
-  // them for every authored load so the dome is revealed only after the new
-  // source has produced a real decoded frame.
-  dome.video->set_sendFrameReadyEvents(true);
-  if (dome.video->get_canSetSkipOnDrop()) dome.video->set_skipOnDrop(true);
-  dome.video->Prepare();
+  dome.video->Open(url, dome.looping);
   if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
   PaperLogger.info("Nexora preparing '{}' on dome '{}' loop={} sync={}", dome.media,
                    dome.id, dome.looping, dome.syncToSong);
@@ -1159,52 +1101,53 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
 
 void Runtime::PlayVideo(DomeLayer& dome, rapidjson::Value const& json,
                         float eventTime) {
-  if (!Alive(dome.video)) return;
+  if (!dome.video) return;
   dome.resumeAfterPause = false;
   dome.eventStartSongTime = ReadFloat(json, "eventStartSongTime").value_or(eventTime);
   dome.videoOffset = ReadFloat(json, "videoOffset").value_or(dome.videoOffset);
   dome.syncToSong = ReadBool(json, "syncToSong").value_or(dome.syncToSong);
-  if (!dome.video->get_isPrepared()) {
+  if (!dome.video->IsPrepared()) {
     dome.pendingPlay = true;
     return;
   }
-  if (dome.video->get_canSetTime()) {
-    double desired = ReadFloat(json, "time").value_or(
-        dome.syncToSong ? std::max(0.0f, SongTime() - dome.eventStartSongTime + dome.videoOffset)
-                        : dome.videoOffset);
-    dome.video->set_time(std::max(0.0, desired));
-  }
-  // Seek before Play so Quest never flashes frame zero while joining a song
-  // or resuming a preloaded layer at an authored offset.
+  double desired = ReadFloat(json, "time").value_or(
+      dome.syncToSong
+          ? std::max(0.0f,
+                     SongTime() - dome.eventStartSongTime + dome.videoOffset)
+          : dome.videoOffset);
+  if (std::isfinite(desired) && desired > 0.05) dome.video->Seek(desired);
   dome.video->Play();
+  if (!dome.textureBound) {
+    dome.playStartedRealtime = UnityEngine::Time::get_realtimeSinceStartup();
+  }
   dome.pendingPlay = false;
 }
 
 void Runtime::PauseVideo(DomeLayer& dome) {
-  if (!Alive(dome.video)) return;
+  if (!dome.video) return;
   // This is an authored timeline pause, not an app/game suspension. Keeping
   // resumeAfterPause set here made a later Quest focus or pause-menu resume
   // restart video that the map explicitly asked Nexora to keep paused.
   dome.resumeAfterPause = false;
-  if (dome.video->get_isPlaying()) dome.video->Pause();
+  if (dome.video->IsPlaying()) dome.video->Pause();
   dome.pendingPlay = false;
 }
 
 void Runtime::StopVideo(DomeLayer& dome) {
-  if (Alive(dome.video)) dome.video->Stop();
+  if (dome.video) dome.video->Stop();
   dome.pendingPlay = false;
   dome.resumeAfterPause = false;
   dome.textureBound = false;
+  dome.playStartedRealtime = 0.0f;
   if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
 }
 
 void Runtime::SeekVideo(DomeLayer& dome, rapidjson::Value const& json) {
-  if (!Alive(dome.video) || !dome.video->get_isPrepared() ||
-      !dome.video->get_canSetTime()) {
+  if (!dome.video || !dome.video->IsPrepared()) {
     return;
   }
   double const time = std::max(0.0f, ReadFloat(json, "time").value_or(0.0f));
-  dome.video->set_time(time);
+  dome.video->Seek(time);
 }
 
 void Runtime::SetPlayback(DomeLayer& dome, rapidjson::Value const& json) {
@@ -1213,7 +1156,7 @@ void Runtime::SetPlayback(DomeLayer& dome, rapidjson::Value const& json) {
   dome.videoOffset = ReadFloat(json, "videoOffset").value_or(dome.videoOffset);
   dome.authoredPlaybackSpeed = Clamp(
       ReadFloat(json, "speed").value_or(dome.authoredPlaybackSpeed), 0.1f, 4.0f);
-  if (Alive(dome.video)) dome.video->set_isLooping(dome.looping);
+  if (dome.video) dome.video->SetLooping(dome.looping);
 }
 
 void Runtime::ApplyDomeJson(DomeVisual& visual, DomeLayer& dome,
@@ -1338,14 +1281,11 @@ void Runtime::ApplyDomeVisual(DomeLayer& dome) {
                                                             value.roll));
   }
   if (Alive(dome.renderer)) {
-  bool const canRender =
-      dome.textureBound &&
-      Alive(dome.video) &&
-      dome.video->get_isPrepared() &&
-      value.opacity > 0.001f;
-
-  dome.renderer->set_enabled(canRender);
-}
+    bool const canRender = dome.textureBound && dome.video &&
+                           dome.video->IsPrepared() &&
+                           value.opacity > 0.001f;
+    dome.renderer->set_enabled(canRender);
+  }
 }
 
 void Runtime::AnimateDome(DomeLayer& dome, rapidjson::Value const& json,
@@ -1447,87 +1387,118 @@ float Runtime::TimeScale() {
 }
 
 void Runtime::UpdateVideo(DomeLayer& dome, float songTime, float realtime) {
-  if (!Alive(dome.video) || dome.prepareFailed) return;
+  if (!dome.video || dome.prepareFailed) return;
 
   try {
-    if (!dome.video->get_isPrepared()) {
+    dome.video->Tick();
+    if (dome.video->Failed()) {
+      dome.prepareFailed = true;
+      dome.pendingPlay = false;
+      if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
+      PaperLogger.error("Nexora native decoder failed on dome '{}' media='{}': {}",
+                        dome.id, dome.media, dome.video->Error());
+      dome.video->Stop();
+      return;
+    }
+    if (!dome.video->IsPrepared()) {
       if (dome.prepareStartedRealtime > 0.0f &&
           realtime - dome.prepareStartedRealtime > GetPrepareTimeoutSeconds()) {
         dome.prepareFailed = true;
         dome.pendingPlay = false;
         if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
         PaperLogger.error(
-            "Nexora decoder timeout on '{}' after {}s. Check adb logcat for AndroidVideoMedia.",
+            "Nexora Android MediaPlayer timeout on '{}' after {}s.",
             dome.media, GetPrepareTimeoutSeconds());
+        dome.video->Stop();
       }
       return;
     }
 
-    if (dome.pendingPlay) {
-      if (dome.video->get_canSetTime()) {
-        double const desired =
-            dome.syncToSong
-                ? std::max(0.0f,
-                           songTime - dome.eventStartSongTime + dome.videoOffset)
-                : std::max(0.0f, dome.videoOffset);
-
-        dome.video->set_time(desired);
-      }
-
-      dome.video->Play();
-      dome.pendingPlay = false;
-      PaperLogger.info("Nexora started playback on dome '{}'", dome.id);
+    if (!dome.preparedLogged) {
+      dome.preparedLogged = true;
+      PaperLogger.info(
+          "Nexora native decoder prepared dome '{}' media='{}' size={}x{} length={:.3f}s",
+          dome.id, dome.media, dome.video->VideoWidth(), dome.video->VideoHeight(),
+          dome.video->DurationSeconds());
     }
 
-    auto textureReference = dome.video->get_texture();
-    auto* decoderTexture = textureReference.unsafePtr();
-    auto* texture = dome.renderTexturePipeline && Alive(dome.videoTexture)
-                        ? static_cast<UnityEngine::Texture*>(dome.videoTexture)
-                        : decoderTexture;
-    // frameReady is authoritative. Polling remains as a fallback for Android
-    // video backends that advance VideoPlayer.frame but omit the event.
-    bool const decodedFrame = dome.video->get_frame() >= 0;
+    if (dome.pendingPlay) {
+      double const desired =
+          dome.syncToSong
+              ? std::max(0.0f,
+                         songTime - dome.eventStartSongTime + dome.videoOffset)
+              : std::max(0.0f, dome.videoOffset);
+      if (!std::isfinite(desired)) {
+        dome.prepareFailed = true;
+        dome.pendingPlay = false;
+        if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
+        PaperLogger.error("Nexora refused non-finite initial time on dome '{}'",
+                          dome.id);
+        return;
+      }
+      bool const needsInitialSeek = desired > 0.05;
+      if (needsInitialSeek) dome.video->Seek(desired);
+      dome.video->Play();
+      float const speed =
+          Clamp(dome.authoredPlaybackSpeed * TimeScale(), 0.1f, 4.0f);
+      dome.video->SetPlaybackSpeed(speed);
+      dome.pendingPlay = false;
+      dome.playStartedRealtime = realtime;
+      PaperLogger.info(
+          "Nexora started native playback on dome '{}' initialSeek={} target={:.3f}s speed={:.3f}",
+          dome.id, needsInitialSeek, desired, speed);
+    }
 
+    auto* texture = dome.video->Texture();
     bool const hadTexture = dome.textureBound;
-    dome.textureBound = dome.textureBound || (Alive(texture) && decodedFrame);
+    dome.textureBound = dome.textureBound ||
+                        (Alive(texture) && dome.video->HasFrame());
+    if (!dome.textureBound && dome.playStartedRealtime > 0.0f &&
+        realtime - dome.playStartedRealtime > kFirstFrameTimeoutSeconds) {
+      dome.prepareFailed = true;
+      if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
+      PaperLogger.error(
+          "Nexora native decoder produced no first frame within {}s on dome '{}' media='{}'",
+          kFirstFrameTimeoutSeconds, dome.id, dome.media);
+      dome.video->Stop();
+      return;
+    }
     if (dome.textureBound && Alive(dome.material) && s_propMainTex != 0) {
       dome.material->SetTexture(s_propMainTex, texture);
     }
 
     if (!hadTexture && dome.textureBound) {
       PaperLogger.info(
-          "Nexora first decoded frame bound on dome '{}' pipeline={}",
-          dome.id, dome.renderTexturePipeline ? "RenderTexture" : "APIOnly");
+          "Nexora first native frame bound on dome '{}' serial={}", dome.id,
+          dome.video->FrameSerial());
     }
 
     if (Alive(dome.renderer)) {
       dome.renderer->set_enabled(
           dome.textureBound &&
-          dome.video->get_isPrepared() &&
+          dome.video->IsPrepared() &&
           dome.visual.opacity > 0.001f);
     }
 
-    if (!dome.video->get_isPlaying()) return;
+    if (!dome.video->IsPlaying()) return;
 
-    if (dome.video->get_canSetPlaybackSpeed()) {
-      float const desiredSpeed = Clamp(dome.authoredPlaybackSpeed * TimeScale(), 0.1f, 4.0f);
-      if (std::fabs(dome.video->get_playbackSpeed() - desiredSpeed) > 0.005f) {
-        dome.video->set_playbackSpeed(desiredSpeed);
-      }
+    float const desiredSpeed =
+        Clamp(dome.authoredPlaybackSpeed * TimeScale(), 0.1f, 4.0f);
+    if (std::fabs(dome.video->PlaybackSpeed() - desiredSpeed) > 0.005f) {
+      dome.video->SetPlaybackSpeed(desiredSpeed);
     }
 
-    if (!dome.syncToSong || !dome.video->get_canSetTime() ||
-        realtime - dome.lastSyncRealtime < 0.5f) {
+    if (!dome.syncToSong || realtime - dome.lastSyncRealtime < 0.5f) {
       return;
     }
 
     dome.lastSyncRealtime = realtime;
     double desired = std::max(0.0f, songTime - dome.eventStartSongTime + dome.videoOffset);
-    double const length = dome.video->get_length();
+    double const length = dome.video->DurationSeconds();
     if (dome.looping && length > 0.01) desired = std::fmod(desired, length);
-    double const drift = std::fabs(dome.video->get_time() - desired);
+    double const drift = std::fabs(dome.video->TimeSeconds() - desired);
     if (drift > GetSyncToleranceSeconds()) {
-      dome.video->set_time(desired);
+      dome.video->Seek(desired);
       if (GetDebugLoggingEnabled()) {
         PaperLogger.info("Nexora resync dome '{}': drift={:.3f}s target={:.3f}s",
                          dome.id, drift, desired);
@@ -1538,70 +1509,6 @@ void Runtime::UpdateVideo(DomeLayer& dome, float songTime, float realtime) {
   } catch (...) {
     PaperLogger.error("Nexora UpdateVideo non-standard exception on dome '{}'", dome.id);
   }
-}
-
-void Runtime::OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
-                                std::int64_t frameIndex) {
-  if (!Alive(player) || frameIndex < 0) return;
-
-  for (auto& [_, dome] : _domes) {
-    if (dome.video != player) continue;
-
-    auto textureReference = player->get_texture();
-    auto* decoderTexture = textureReference.unsafePtr();
-    auto* texture = dome.renderTexturePipeline && Alive(dome.videoTexture)
-                        ? static_cast<UnityEngine::Texture*>(dome.videoTexture)
-                        : decoderTexture;
-    if (!Alive(texture)) return;
-
-    bool const firstFrame = !dome.textureBound;
-    dome.textureBound = true;
-    if (Alive(dome.material) && s_propMainTex != 0) {
-      dome.material->SetTexture(s_propMainTex, texture);
-    }
-    if (Alive(dome.renderer)) {
-      dome.renderer->set_enabled(dome.visual.opacity > 0.001f);
-    }
-
-    // One callback is enough for visibility. Turning the per-frame callback
-    // back off avoids dispatching 60 managed events per second for a 4K60 map
-    // video on Quest.
-    player->set_sendFrameReadyEvents(false);
-    if (firstFrame) {
-      PaperLogger.info(
-          "Nexora frameReady revealed dome '{}' at decoded frame {} pipeline={}",
-          dome.id, frameIndex,
-          dome.renderTexturePipeline ? "RenderTexture" : "APIOnly");
-    }
-    return;
-  }
-}
-
-void Runtime::OnVideoPrepared(UnityEngine::Video::VideoPlayer* player) {
-  if (!Alive(player)) return;
-  for (auto& [_, dome] : _domes) {
-    if (dome.video != player) continue;
-    PaperLogger.info(
-        "Nexora decoder prepared dome '{}' media='{}' size={}x{} length={:.3f}s",
-        dome.id, dome.media, player->get_width(), player->get_height(),
-        player->get_length());
-    return;
-  }
-}
-
-void Runtime::OnVideoError(UnityEngine::Video::VideoPlayer* player,
-                           StringW message) {
-  for (auto& [_, dome] : _domes) {
-    if (dome.video != player) continue;
-    dome.prepareFailed = true;
-    dome.pendingPlay = false;
-    if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
-    PaperLogger.error("Nexora decoder error on dome '{}' media='{}': {}", dome.id,
-                      dome.media, std::string(message));
-    return;
-  }
-  PaperLogger.error("Nexora decoder error after dome retirement: {}",
-                    std::string(message));
 }
 
 void Runtime::UpdateDomes(float songTime) {
@@ -1692,16 +1599,19 @@ void Runtime::ApplyPauseState() {
   if (suspend) {
     _lifecycle.Suspend();
     for (auto& [_, dome] : _domes) {
-      if (!Alive(dome.video)) continue;
-      bool const wasPlaying = dome.video->get_isPlaying();
+      if (!dome.video) continue;
+      bool const wasPlaying = dome.video->IsPlaying();
       dome.resumeAfterPause = dome.resumeAfterPause || wasPlaying;
       if (wasPlaying) dome.video->Pause();
     }
   } else {
     _lifecycle.Resume();
     for (auto& [_, dome] : _domes) {
-      if (Alive(dome.video) && dome.resumeAfterPause && dome.video->get_isPrepared()) {
+      if (dome.video && dome.resumeAfterPause && dome.video->IsPrepared()) {
         dome.video->Play();
+        if (!dome.textureBound) {
+          dome.playStartedRealtime = UnityEngine::Time::get_realtimeSinceStartup();
+        }
       }
       dome.resumeAfterPause = false;
       dome.lastSyncRealtime = -1000.0f;
@@ -1719,29 +1629,10 @@ void Runtime::DestroyDome(std::string const& id, bool canTouchUnity) {
   if (iterator == _domes.end()) return;
   auto layer = iterator->second;
   _domes.erase(iterator);
-  try {
-    if (Alive(layer.video)) {
-      if (layer.frameReadyDelegate != nullptr) {
-        layer.video->remove_frameReady(layer.frameReadyDelegate);
-      }
-      if (layer.prepareCompletedDelegate != nullptr) {
-        layer.video->remove_prepareCompleted(layer.prepareCompletedDelegate);
-      }
-      if (layer.errorReceivedDelegate != nullptr) {
-        layer.video->remove_errorReceived(layer.errorReceivedDelegate);
-      }
-      layer.video->set_sendFrameReadyEvents(false);
-      layer.video->Stop();
-      layer.video->set_targetTexture(nullptr);
-    }
-  } catch (...) {}
+  if (layer.video) layer.video->Stop();
   if (!canTouchUnity) return;
   try {
     if (Alive(layer.material)) UnityEngine::Object::Destroy(layer.material);
-    if (Alive(layer.videoTexture)) {
-      layer.videoTexture->Release();
-      UnityEngine::Object::Destroy(layer.videoTexture);
-    }
     if (Alive(layer.mesh)) UnityEngine::Object::Destroy(layer.mesh);
     if (Alive(layer.object)) UnityEngine::Object::Destroy(layer.object);
   } catch (...) {
@@ -1751,6 +1642,9 @@ void Runtime::DestroyDome(std::string const& id, bool canTouchUnity) {
 
 void Runtime::DestroyAllDomes(bool canTouchUnity) {
   if (!canTouchUnity) {
+    for (auto& [_, dome] : _domes) {
+      if (dome.video) dome.video->Stop();
+    }
     _domes.clear();
     return;
   }

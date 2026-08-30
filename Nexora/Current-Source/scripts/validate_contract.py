@@ -9,8 +9,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_ROOT = ROOT.parents[1]
+SHARED_ROOT = BUNDLE_ROOT / "Shared/QuestNativeVideo"
+if not (SHARED_ROOT / "src/Player.cpp").is_file():
+    SHARED_ROOT = ROOT / "shared/QuestNativeVideo"
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "0.2.6"
+MOD_VERSION = "0.2.7"
 TARGET = "1.40.8_7379"
 
 
@@ -36,6 +40,9 @@ def main() -> int:
     header = (ROOT / "include/NexoraRuntime.hpp").read_text(encoding="utf-8")
     runtime = (ROOT / "src/NexoraRuntime.cpp").read_text(encoding="utf-8")
     runtime_folded = runtime.casefold()
+    native_video = (
+        SHARED_ROOT / "src/Player.cpp"
+    ).read_text(encoding="utf-8")
     components = (ROOT / "include/NexoraComponents.hpp").read_text(encoding="utf-8")
     shader = (ROOT / "unity/Assets/Nexora/Shaders/NexoraDome.shader").read_text(
         encoding="utf-8"
@@ -113,8 +120,13 @@ def main() -> int:
         "containsnexoraevents",
         "songcore did not report its requirement",
         "beatmapcallbacksupdater",
-        "add_preparecompleted",
-        "add_errorreceived",
+        "acquirenativevideo",
+        "questnativevideo::player::create",
+        "dome.video->open",
+        "dome.video->tick",
+        "dome.video->hasframe",
+        "videopipeline=androidsurface",
+        "produced no first frame within",
         "nexora/media",
         "questmodinterop::inspect",
         "iscapabilityregistered(kcapability)",
@@ -123,6 +135,27 @@ def main() -> int:
     ):
         if marker not in runtime_folded:
             fail(f"map-local Quest contract is missing runtime marker: {marker}")
+
+    if "unityengine::video" in runtime_folded or "videoplayer" in runtime_folded:
+        fail("runtime regressed to Unity VideoPlayer")
+    native_video_folded = native_video.casefold()
+    for marker in (
+        'findclass("android/media/mediaplayer")',
+        'findclass("android/graphics/surfacetexture")',
+        "gl_texture_external_oes",
+        "texture2d::createexternaltexture",
+        "gl::issuepluginevent",
+        "backendfatal",
+        "newjavastring",
+        "decoder surface creation timed out",
+        "gl_draw_framebuffer_binding",
+        "gl_color_clear_value",
+    ):
+        if marker not in native_video_folded:
+            fail(f"Android native decoder is missing: {marker}")
+    for marker in ("ffmpeg", "libavcodec", "exoplayer"):
+        if marker in native_video_folded:
+            fail(f"native decoder contains an unapproved codec/player stack: {marker}")
 
     for asset_type, field in (
         ("UnityEngine::AssetBundle", "_assetBundle"),
@@ -198,7 +231,7 @@ def main() -> int:
     print(
         "Nexora Quest contract validation passed: "
         f"{len(known_events)} events, target {TARGET}, scene-safe assets, "
-        "no PC framebuffer path/artifacts"
+        "Android MediaPlayer surface, no PC framebuffer path/artifacts"
     )
     return 0
 

@@ -10,8 +10,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_ROOT = ROOT.parents[1]
+SHARED_ROOT = BUNDLE_ROOT / "Shared/QuestNativeVideo"
+if not (SHARED_ROOT / "src/Player.cpp").is_file():
+    SHARED_ROOT = ROOT / "shared/QuestNativeVideo"
 TARGET = "1.40.8_7379"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 
 def fail(message: str) -> None:
@@ -33,6 +37,9 @@ def main() -> None:
 
     main_source = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
     runtime = (ROOT / "src/CinemaRuntime.cpp").read_text(encoding="utf-8")
+    native_video = (
+        SHARED_ROOT / "src/Player.cpp"
+    ).read_text(encoding="utf-8")
     hooks = (ROOT / "src/CinemaHooks.cpp").read_text(encoding="utf-8")
     shader = (ROOT / "unity/Assets/Cinema/Shaders/CinemaVideoScreen.shader").read_text(
         encoding="utf-8"
@@ -48,8 +55,8 @@ def main() -> None:
             "Runtime::Instance().SetEnabled(enabled)",
             "CinemaQuest::InstallHooks();",
             "Cinema disabled startup complete",
-            "safetyReset_0_2_0",
-            'document.AddMember("safetyReset_0_2_0", true',
+            "safetyReset_0_2_1",
+            'document.AddMember("safetyReset_0_2_1", true',
             'document.AddMember("enabled", false',
         ),
         "Mods settings toggle",
@@ -64,17 +71,20 @@ def main() -> None:
             'ReadFloat(*value, "endVideoAt")',
             'ReadFloat(*value, "bloom")',
             "ApplyPlaybackFade",
-            "VideoRenderMode::RenderTexture",
-            "set_targetTexture(_videoTexture)",
-            "set_sendFrameReadyEvents(false)",
-            "_videoPlayer->get_frame() >= 0",
+            "QuestNativeVideo::Player::Create",
+            "_nativeVideo->Open",
+            "_nativeVideo->Tick",
+            "_nativeVideo->HasFrame",
+            "_nativeVideo->Texture",
+            "_nativeVideo->Pause",
+            "_nativeVideo->Seek",
+            "_nativeVideo->Stop",
+            "produced no first frame within",
             "SetScreensVisible(false)",
             "SetScreensVisible(true)",
             "if (!enabled)",
             "StopSession(true)",
             "StopSession(false)",
-            "_videoPlayer->set_targetTexture(nullptr)",
-            "_videoTexture->Release()",
             "SetSelectedMapContext",
             "Cinema yielded map video ownership to required Nexora",
             "UnregisterCapability",
@@ -114,10 +124,31 @@ def main() -> None:
             "if (_initialized)",
             "runtime armed without creating Unity objects",
             "RetireGameplay",
-            "if (canTouchUnity && Alive(_videoPlayer))",
+            "if (_nativeVideo) _nativeVideo->Stop();",
+            "if (canTouchUnity) try",
         ),
         "scene-safe opt-in lifecycle",
     )
+    require(
+        native_video,
+        (
+            'FindClass("android/media/MediaPlayer")',
+            'FindClass("android/graphics/SurfaceTexture")',
+            "GL_TEXTURE_EXTERNAL_OES",
+            "Texture2D::CreateExternalTexture",
+            "GL::IssuePluginEvent",
+            "backendFatal",
+            "NewJavaString",
+            "decoder surface creation timed out",
+            "GL_DRAW_FRAMEBUFFER_BINDING",
+            "GL_COLOR_CLEAR_VALUE",
+        ),
+        "Android native decoder boundary",
+    )
+    if "UnityEngine::Video" in runtime or "VideoPlayer" in runtime:
+        fail("Cinema runtime regressed to Unity VideoPlayer")
+    if any(token in native_video.casefold() for token in ("ffmpeg", "libavcodec", "exoplayer")):
+        fail("native decoder bundles or references an unapproved codec/player stack")
     require(
         shader,
         (
@@ -162,7 +193,7 @@ def main() -> None:
 
     print(
         "Cinema Quest contract: PASS "
-        f"(menu-only disabled startup; polling sync; pointer-only scene retirement; local-only video; stereo shader; {TARGET}; ELF64 AArch64)"
+        f"(menu-only disabled startup; Android MediaPlayer surface; polling sync; pointer-only scene retirement; local-only video; stereo shader; {TARGET}; ELF64 AArch64)"
     )
 
 

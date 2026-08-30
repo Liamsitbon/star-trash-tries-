@@ -42,15 +42,15 @@ jobs:
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 tests/cinema_contract_check.py
-            qmod: release/Cinema-Quest-0.2.0.qmod
-            release_name: Cinema-Quest-0.2.0.qmod
+            qmod: release/Cinema-Quest-0.2.1.qmod
+            release_name: Cinema-Quest-0.2.1.qmod
           - name: Nexora
             project: Nexora/Current-Source
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 scripts/validate_contract.py
-            qmod: release/Nexora-Quest-0.2.6.qmod
-            release_name: Nexora-Quest-0.2.6.qmod
+            qmod: release/Nexora-Quest-0.2.7.qmod
+            release_name: Nexora-Quest-0.2.7.qmod
           - name: Vivify
             project: Vivify/Current-Source
             build: pwsh -NoProfile -File scripts/build.ps1 -clean
@@ -65,6 +65,13 @@ jobs:
             check: bash scripts/validateProject.sh
             qmod: NoodleExtensions.qmod
             release_name: NoodleExtensions-Quest-1.8.12.qmod
+          - name: AudioLink
+            project: BSAudioLink-Quest-master
+            build: pwsh -NoProfile -File scripts/build.ps1 -release
+            package: qpm qmod manifest && qpm qmod zip
+            check: python3 -c 'import json; m=json.load(open("mod.json")); assert m["id"] == "bs-audiolink" and m["packageVersion"] == "1.40.8_7379" and m["modFiles"] == ["libbs-audiolink.so"]'
+            qmod: AudioLink.qmod
+            release_name: AudioLink-Quest-0.0.1.qmod
 
     steps:
       - name: Check out source

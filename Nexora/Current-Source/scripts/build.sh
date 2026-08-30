@@ -5,8 +5,9 @@ NEXORA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$NEXORA_ROOT/../.." && pwd)"
 NEXORA_JOBS="${NEXORA_BUILD_JOBS:-6}"
 
-# Apply the audited Android video startup + decoder texture fixes before compile.
-python3 "$REPO_ROOT/tools/apply_quest_runtime_fixes.py"
+# Refuse stale Unity VideoPlayer code before compiling. This check is read-only:
+# the reviewed source is exactly the source CMake receives.
+python3 "$REPO_ROOT/tools/apply_quest_runtime_fixes.py" --component nexora --verify-only
 
 cd "$NEXORA_ROOT"
 if [[ ! -d extern/includes || ! -d extern/libs ]]; then

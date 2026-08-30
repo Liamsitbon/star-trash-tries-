@@ -60,8 +60,17 @@ def main() -> int:
         fail("true MultiPass hard gate missing")
     if "int const activeEye = isStereoCamera ? camera->get_stereoActiveEye().value__ : 0;" not in components:
         fail("Multiview-safe active-eye read guard missing")
-    if post.count("cb->SetGlobalFloat(StereoActiveEyePropertyId(), 0.0f);") < 4:
-        fail("stereo-eye neutralization/reset count is lower than expected")
+    neutral = "cb->SetGlobalFloat(StereoActiveEyePropertyId(), 0.0f);"
+    apply_blits = post.split("void Runtime::ApplyBlits", 1)[1].split(
+        "void Runtime::CacheMainRenderDescriptor", 1
+    )[0]
+    mid_blits = post.split("Runtime::BuildMidRenderCommandBuffer", 1)[1].split(
+        "Runtime::ComputeMidRenderSignature", 1
+    )[0]
+    if neutral not in apply_blits or neutral not in mid_blits:
+        fail("each multiview blit chain must neutralize the legacy eye selector")
+    if "cb->SetGlobalFloat(StereoActiveEyePropertyId(), 1.0f);" in post:
+        fail("multiview blits must not force a physical-eye selector")
     print("Vivify stereo guards: PASS")
     print("ALL STATIC COMPATIBILITY CHECKS PASSED")
     return 0

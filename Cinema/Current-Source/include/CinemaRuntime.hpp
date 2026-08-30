@@ -12,10 +12,9 @@
 #include "UnityEngine/Mesh.hpp"
 #include "UnityEngine/MeshFilter.hpp"
 #include "UnityEngine/Renderer.hpp"
-#include "UnityEngine/RenderTexture.hpp"
 #include "UnityEngine/Shader.hpp"
 #include "UnityEngine/Vector3.hpp"
-#include "UnityEngine/Video/VideoPlayer.hpp"
+#include "QuestNativeVideo/Player.hpp"
 #include "beatsaber-hook/shared/utils/typedefs-wrappers.hpp"
 
 namespace CinemaQuest {
@@ -99,8 +98,7 @@ private:
   SafePtrUnity<UnityEngine::Shader> _videoShader;
   GlobalNamespace::AudioTimeSyncController* _audioController = nullptr;
   UnityEngine::GameObject* _playbackObject = nullptr;
-  UnityEngine::Video::VideoPlayer* _videoPlayer = nullptr;
-  UnityEngine::RenderTexture* _videoTexture = nullptr;
+  std::shared_ptr<QuestNativeVideo::Player> _nativeVideo;
   std::vector<ScreenInstance> _screens;
   std::optional<VideoConfig> _selectedConfig;
   std::string _selectedMapRoot;
@@ -109,7 +107,6 @@ private:
   bool _paused = false;
   bool _firstFrameReady = false;
   bool _playIssued = false;
-  bool _slowStartPending = false;
   bool _aspectApplied = false;
   bool _decoderFailed = false;
   bool _yieldToNexora = false;
@@ -118,6 +115,7 @@ private:
   bool _selectedMapRequiresNoodleExtensions = false;
   bool _selectedMapRequiresVivify = false;
   float _prepareStartedRealtime = 0.0f;
+  float _playStartedRealtime = 0.0f;
   float _lastSyncRealtime = -1000.0f;
   int _lastErrorFrame = -10000;
 };

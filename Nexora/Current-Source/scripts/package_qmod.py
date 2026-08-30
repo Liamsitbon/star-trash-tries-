@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "release" / "Nexora-Quest-0.2.6.qmod"
+OUTPUT = ROOT / "release" / "Nexora-Quest-0.2.7.qmod"
 FIXED_TIME = (2026, 8, 20, 0, 0, 0)
 FILES = {
     "mod.json": ROOT / "mod.json",
@@ -47,8 +47,10 @@ def validate() -> dict[str, object]:
         raise SystemExit("assets/nexoraassets.android is not a real Unity AssetBundle")
 
     manifest = json.loads(FILES["mod.json"].read_text(encoding="utf-8"))
-    if manifest.get("id") != "nexora" or manifest.get("packageVersion") != "1.40.8_7379":
-        raise SystemExit("mod.json identity or Beat Saber target is invalid")
+    if (manifest.get("id") != "nexora" or
+            manifest.get("version") != "0.2.7" or
+            manifest.get("packageVersion") != "1.40.8_7379"):
+        raise SystemExit("mod.json identity, version, or Beat Saber target is invalid")
     return manifest
 
 
@@ -66,9 +68,13 @@ def main() -> int:
     with zipfile.ZipFile(OUTPUT) as archive:
         if archive.testzip() is not None:
             raise SystemExit("QMOD ZIP integrity check failed")
-        names = archive.namelist()
-        if any("__MACOSX" in name or name.startswith("._") for name in names):
-            raise SystemExit("QMOD contains macOS metadata")
+        names = {name.casefold() for name in archive.namelist()}
+        expected = {name.casefold() for name in FILES}
+        if names != expected:
+            raise SystemExit(f"QMOD payload changed: {sorted(names)}")
+        forbidden = (".dll", ".exe", ".dylib", ".pdb", ".lib", "ffmpeg", "libav")
+        if any(any(token in name for token in forbidden) for name in names):
+            raise SystemExit("QMOD contains a PC/macOS codec or binary payload")
 
     report = {
         "file": OUTPUT.name,
@@ -78,6 +84,8 @@ def main() -> int:
         "runtimeSha256": sha256(FILES["libNexora.so"]),
         "assetBundleSha256": sha256(FILES["nexoraassets.android"]),
         "target": manifest["packageVersion"],
+        "architecture": "ELF64-AArch64",
+        "pcPayloads": False,
         "runtimeProof": "source-build-and-package-only",
     }
     report_path = OUTPUT.with_suffix(".report.json")

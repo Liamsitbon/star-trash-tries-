@@ -4,10 +4,11 @@ Nexora is a separate mod and is not an official Vivify build or release.
 
 BeatSaberCinema is a separate GPLv3 project. Nexora does not include or copy
 BeatSaberCinema source, assets, downloader code, codecs, or UI. Its optional
-`Cinema` capability detection and decoder-owned RenderTexture behavior use
-public SongCore and Unity APIs and were implemented independently so Nexora
-remains MIT-licensed. Cinema-compatible playback itself stays in the separate
-GPLv3 Cinema Quest mod.
+`Cinema` capability detection uses the public SongCore API. Nexora's local video
+path was implemented independently with Android MediaPlayer, SurfaceTexture,
+OpenGL ES, and Unity's public external-texture API; it does not copy Cinema
+source or bundle a codec/player library, so Nexora remains MIT-licensed.
+Cinema-compatible playback itself stays in the separate GPLv3 Cinema Quest mod.
 
 The generation-gated scene retirement, pause/resume handling, and safe
 camera-pass-through structure were adapted from the local Quest port of

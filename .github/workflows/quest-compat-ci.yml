@@ -21,16 +21,28 @@ jobs:
       - name: Validate patch tool syntax
         run: python3 -m py_compile tools/apply_quest_runtime_fixes.py
 
-      - name: Apply Quest runtime fixes
-        run: python3 tools/apply_quest_runtime_fixes.py
+      - name: Verify Quest-native decoder boundary
+        run: python3 tools/apply_quest_runtime_fixes.py --verify-only
 
-      - name: Verify patch is idempotent
+      - name: Verify decoder check is read-only
         run: |
-          python3 tools/apply_quest_runtime_fixes.py
-          python3 tools/apply_quest_runtime_fixes.py --verify-only
+          python3 tools/apply_quest_runtime_fixes.py --component cinema --verify-only
+          python3 tools/apply_quest_runtime_fixes.py --component nexora --verify-only
+          git diff --exit-code
 
       - name: Validate Nexora source contract
         run: python3 Nexora/Current-Source/scripts/validate_contract.py
+
+      - name: Validate Vivify map and stereo regressions
+        run: |
+          python3 Vivify/Current-Source/tests/murder_plot_compat_check.py
+          VIVIFY_SKIP_HOST_TESTS=1 bash Vivify/Current-Source/scripts/verify-port-source.sh
+
+      - name: Validate Noodle Extensions fake-note regressions
+        run: |
+          bash NE-Fixed/Current-Source/scripts/validateProject.sh
+          python3 NE-Fixed/Current-Source/tests/murder_plot_compat_check.py
+          python3 NE-Fixed/Current-Source/tests/additional_audit_1_8_8.py
 
       - name: Validate shared interop contract
         run: python3 tests/interop_contract_check.py
@@ -72,6 +84,16 @@ jobs:
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 scripts/validate_contract.py
+          - name: Vivify
+            project: Vivify/Current-Source
+            build: pwsh -NoProfile -File scripts/build.ps1 -clean
+            package: python3 scripts/package_qmod.py
+            check: VIVIFY_SKIP_HOST_TESTS=1 bash scripts/verify-port-source.sh
+          - name: NoodleExtensions
+            project: NE-Fixed/Current-Source
+            build: bash scripts/build.sh --release --clean
+            package: bash scripts/buildQMOD.sh
+            check: bash scripts/validateProject.sh
 
     name: Build and validate ${{ matrix.name }}
     steps:

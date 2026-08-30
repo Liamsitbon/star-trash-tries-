@@ -7,7 +7,7 @@
     "info": {
       "name": "Nexora",
       "id": "nexora",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "url": "https://github.com/liamsitbon/Nexora",
       "additionalData": {
         "overrideSoName": "libNexora.so",

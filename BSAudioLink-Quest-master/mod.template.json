@@ -5,7 +5,7 @@
   "author": "RedBrumbler",
   "version": "${version}",
   "packageId": "com.beatgames.beatsaber",
-  "packageVersion": "1.28.0_4124311467",
+  "packageVersion": "1.40.8_7379",
   "description": "AudioLink capabilities like in VRChat, ported to Beat Saber!",
   "dependencies": [],
   "modFiles": [
