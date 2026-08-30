@@ -52,6 +52,8 @@ public:
   // Per-map compatibility state. These flags are derived from map requirements;
   // they do not take ownership of Vivify/Heck internals.
   static bool VivifyActive;
+  static bool NexoraActive;
+  static bool CinemaActive;
   static bool SharedTracksRuntimeActive;
 
   struct NoteCache {

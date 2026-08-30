@@ -1,5 +1,6 @@
 #include "VivifyRuntimeInternal.hpp"
 #include "VivifyComponents.hpp"
+#include "QuestInterop.hpp"
 #include <array>
 #include <charconv>
 #include <cstring>
@@ -280,6 +281,18 @@ void Runtime::HandleLevelSelected(SongCore::API::LevelSelect::LevelWasSelectedEv
     return;
   }
   _selectedLevelPath = std::string(event.customBeatmapLevel->customLevelPath);
+  QuestModInterop::PeerSet requiredPeers;
+  if (event.customLevelDetails) {
+    requiredPeers = QuestModInterop::RequiredPeers(
+        event.customLevelDetails->difficultyDetails.requirements);
+  }
+  auto const installedPeers = QuestModInterop::InstalledPeers();
+  PaperLogger.info(
+      "Vivify interop: installed[C={} N={} NE={} V={}] required[C={} N={} NE={} V={}]",
+      installedPeers.cinema, installedPeers.nexora,
+      installedPeers.noodleExtensions, installedPeers.vivify,
+      requiredPeers.cinema, requiredPeers.nexora,
+      requiredPeers.noodleExtensions, requiredPeers.vivify);
   if (GetVivifyDebugLogging()) {
     PaperLogger.info("Vivify level selected: path='{}' isCustom={} hasDetails={}",
                      _selectedLevelPath, BoolText(event.isCustom), BoolText(event.customLevelDetails.has_value()));

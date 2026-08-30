@@ -1,6 +1,7 @@
 #include "NexoraRuntime.hpp"
 
 #include "NexoraComponents.hpp"
+#include "QuestInterop.hpp"
 #include "main.hpp"
 
 #include <algorithm>
@@ -445,9 +446,15 @@ UnityEngine::Shader* Runtime::FindUsableShader() {
 }
 
 void Runtime::LateLoad() {
-  EnsureBehaviour();
-  LoadAssets();
-  SongCore::API::Capabilities::RegisterCapability(kCapability);
+  if (GetNexoraEnabled()) {
+    EnsureBehaviour();
+    LoadAssets();
+    if (!SongCore::API::Capabilities::IsCapabilityRegistered(kCapability)) {
+      SongCore::API::Capabilities::RegisterCapability(kCapability);
+    }
+  } else if (SongCore::API::Capabilities::IsCapabilityRegistered(kCapability)) {
+    SongCore::API::Capabilities::UnregisterCapability(kCapability);
+  }
   CustomJSONData::CustomEventCallbacks::AddCustomEventCallback(&Runtime::OnCustomEventStatic);
   SongCore::API::LevelSelect::GetLevelWasSelectedEvent() +=
       [](SongCore::API::LevelSelect::LevelWasSelectedEventArgs const& event) {
@@ -458,10 +465,17 @@ void Runtime::LateLoad() {
         bool requiresNexora = false;
         if (event.isCustom && event.customLevelDetails) {
           auto const& requirements = event.customLevelDetails->difficultyDetails.requirements;
+          auto const context = QuestModInterop::Inspect(requirements);
           requiresNexora = std::any_of(
               requirements.begin(), requirements.end(), [](auto const& requirement) {
                 return requirement == std::string(kCapability);
               });
+          PaperLogger.info(
+              "Nexora interop: installed[C={} N={} NE={} V={}] required[C={} N={} NE={} V={}]",
+              context.installed.cinema, context.installed.nexora,
+              context.installed.noodleExtensions, context.installed.vivify,
+              context.required.cinema, context.required.nexora,
+              context.required.noodleExtensions, context.required.vivify);
         }
         auto& runtime = Runtime::Instance();
         runtime.SetSelectedMapRoot(std::move(mapRoot), requiresNexora);
@@ -472,6 +486,12 @@ void Runtime::LateLoad() {
         // into the exact black/fallback state this guard is meant to prevent.
         if (!requiresNexora) {
           SongCore::API::PlayButton::EnablePlayButton(std::string(kCapability));
+          return;
+        }
+        if (!GetNexoraEnabled()) {
+          SongCore::API::PlayButton::DisablePlayButton(
+              std::string(kCapability),
+              "Nexora is disabled in its Quest configuration.");
           return;
         }
 

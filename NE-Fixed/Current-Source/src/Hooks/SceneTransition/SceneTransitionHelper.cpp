@@ -13,6 +13,7 @@
 #include "NEConfig.h"
 #include "NELogger.h"
 #include "NEHooks.h"
+#include "QuestInterop.hpp"
 #include "SceneTransitionHelper.hpp"
 
 #include "songcore/shared/SongCore.hpp"
@@ -75,6 +76,7 @@ void SceneTransitionHelper::Patch(SongCore::SongLoader::CustomBeatmapLevel* beat
   bool meRequirement = false;
 
   auto const& requirements = diff->get().requirements;
+  auto const context = QuestModInterop::Inspect(requirements);
   meRequirement |= std::find(requirements.begin(), requirements.end(), U8_ME_REQUIREMENTNAME) != requirements.end();
   noodleRequirement |= std::find(requirements.begin(), requirements.end(), U8_REQUIREMENTNAME) != requirements.end();
 
@@ -82,11 +84,21 @@ void SceneTransitionHelper::Patch(SongCore::SongLoader::CustomBeatmapLevel* beat
   bool blockConflict = conflict && getNEConfig().disableOnMappingExtensionsConflict.GetValue();
   bool enableNoodleRuntime = noodleRequirement && !blockConflict;
 
+  NECaches::VivifyActive = context.required.vivify;
+  NECaches::NexoraActive = context.required.nexora;
+  NECaches::CinemaActive = context.required.cinema;
+  NECaches::SharedTracksRuntimeActive =
+      enableNoodleRuntime && context.required.vivify;
+
   Hooks::setNoodleHookEnabled(enableNoodleRuntime);
 
   if (getNEConfig().runtimeDiagnostics.GetValue()) {
-    NELogger::Logger.info("Gameplay activation: NE={}, ME={}, conflict={}, blocked={}, runtime={}", noodleRequirement,
-                          meRequirement, conflict, blockConflict, enableNoodleRuntime);
+    NELogger::Logger.info(
+        "Gameplay activation: NE={}, ME={}, Vivify={}, Nexora={}, Cinema={}, conflict={}, blocked={}, runtime={}; installed[C={} N={} NE={} V={}]",
+        noodleRequirement, meRequirement, NECaches::VivifyActive,
+        NECaches::NexoraActive, NECaches::CinemaActive, conflict, blockConflict,
+        enableNoodleRuntime, context.installed.cinema, context.installed.nexora,
+        context.installed.noodleExtensions, context.installed.vivify);
   }
 
   // auto const& modInfo = NELogger::modInfo;

@@ -6,6 +6,7 @@
 #include "NEConfig.h"
 #include "NEHooks.h"
 #include "NELogger.h"
+#include "QuestInterop.hpp"
 #include "Zenject/DiContainer.hpp"
 #include "custom-json-data/shared/CJDLogger.h"
 #include "songcore/shared/SongCore.hpp"
@@ -23,6 +24,8 @@ bool NECaches::hasLocalSpaceTrail;
 bool NECaches::hasPlayerTransfrom;
 bool NECaches::LeftHandedMode;
 bool NECaches::VivifyActive;
+bool NECaches::NexoraActive;
+bool NECaches::CinemaActive;
 bool NECaches::SharedTracksRuntimeActive;
 SafePtr<Zenject::DiContainer> NECaches::GameplayCoreContainer;
 SafePtr<GlobalNamespace::IJumpOffsetYProvider> NECaches::JumpOffsetYProvider;
@@ -63,6 +66,8 @@ void NECaches::ResetRuntimeState(char const* reason) {
   hasPlayerTransfrom = false;
   LeftHandedMode = false;
   VivifyActive = false;
+  NexoraActive = false;
+  CinemaActive = false;
   SharedTracksRuntimeActive = false;
 
   if (getNEConfig().runtimeDiagnostics.GetValue()) {
@@ -89,7 +94,11 @@ void InstallAndRegisterAll() {
 
   Hooks::InstallHooks();
   NEEvents::AddEventCallbacks();
-  SongCore::API::Capabilities::RegisterCapability(NoodleExtensions::U8_REQUIREMENTNAME);
+  if (!SongCore::API::Capabilities::IsCapabilityRegistered(
+          NoodleExtensions::U8_REQUIREMENTNAME)) {
+    SongCore::API::Capabilities::RegisterCapability(
+        NoodleExtensions::U8_REQUIREMENTNAME);
+  }
 
   SongCore::API::LevelSelect::GetLevelWasSelectedEvent() +=
       [](SongCore::API::LevelSelect::LevelWasSelectedEventArgs const& event) {
@@ -101,20 +110,22 @@ void InstallAndRegisterAll() {
         }
 
         auto const& requirements = event.customLevelDetails->difficultyDetails.requirements;
+        auto const context = QuestModInterop::Inspect(requirements);
         bool meRequirement = std::any_of(requirements.begin(), requirements.end(),
                                          [](auto const& s) { return s == NoodleExtensions::U8_ME_REQUIREMENTNAME; });
         bool neRequirement = std::any_of(requirements.begin(), requirements.end(),
                                          [](auto const& s) { return s == NoodleExtensions::U8_REQUIREMENTNAME; });
-        bool vivifyRequirement =
-            std::any_of(requirements.begin(), requirements.end(), [](auto const& s) {
-              return s == NoodleExtensions::U8_VIVIFY_REQUIREMENTNAME;
-            });
+        bool vivifyRequirement = context.required.vivify;
         bool conflict = meRequirement && neRequirement;
         bool blockConflict = conflict && getNEConfig().disableOnMappingExtensionsConflict.GetValue();
 
         if (getNEConfig().runtimeDiagnostics.GetValue()) {
-          NELogger::Logger.info("Selected custom difficulty: NE={}, ME={}, Vivify={}, conflict={}, blocked={}",
-                                neRequirement, meRequirement, vivifyRequirement, conflict, blockConflict);
+          NELogger::Logger.info(
+              "Selected custom difficulty: NE={}, ME={}, Vivify={}, Nexora={}, Cinema={}, conflict={}, blocked={}; installed[C={} N={} NE={} V={}]",
+              neRequirement, meRequirement, vivifyRequirement,
+              context.required.nexora, context.required.cinema, conflict,
+              blockConflict, context.installed.cinema, context.installed.nexora,
+              context.installed.noodleExtensions, context.installed.vivify);
         }
 
         if (blockConflict) {

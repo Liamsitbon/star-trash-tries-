@@ -5,10 +5,10 @@
   "id": "vivify",
   "modloader": "Scotland2",
   "author": "Liamsitbon, Vendrix, Braxed",
-  "version": "0.6.8",
+  "version": "0.6.9",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Vivify Windows-master 1.1.0 port for Quest, with legacy Animation song-time synchronization, XR-managed multiview post-processing, descriptor-safe secondary cameras, safe leaderboard submission, and Meta Quest 3 optimizations.",
+  "description": "Vivify Windows-master 1.1.0 Quest port with optional SongCore capability interoperability, synchronized animation, XR multiview post-processing and safe lifecycle ownership.",
   "dependencies": [
     {
       "version": "^6.4.2",

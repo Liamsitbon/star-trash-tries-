@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = "1.40.8_7379"
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 def fail(message: str) -> None:
@@ -69,6 +69,9 @@ def main() -> None:
             "StopSession();",
             "_videoPlayer->set_targetTexture(nullptr)",
             "_videoTexture->Release()",
+            "SetSelectedMapContext",
+            "Cinema yielded map video ownership to required Nexora",
+            "UnregisterCapability",
         ),
         "Quest local-video lifecycle",
     )
@@ -130,6 +133,7 @@ def main() -> None:
             "cinemaassets.android",
             "license",
             "third_party_notices.md",
+            "questmodinterop-mit.txt",
         }
         if names != expected:
             fail(f"QMOD payload changed: {sorted(names)}")

@@ -5,10 +5,10 @@
   "id": "nexora",
   "modloader": "Scotland2",
   "author": "Liam Sitbon",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Quest-native map-embedded 360 video worlds, runtime-owned deformable domes, song sync, stereo projection and optional camera effects.",
+  "description": "Quest-native 360 video worlds with optional SongCore capability interoperability, runtime-owned domes, song sync, stereo projection and camera effects.",
   "dependencies": [
     {
       "version": "^6.4.2",

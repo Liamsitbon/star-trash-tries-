@@ -33,12 +33,13 @@ trap cleanup EXIT
 
 cp "$PROJECT_ROOT/mod.json" "$TMP_DIR/mod.json"
 cp "$PROJECT_ROOT/cover.png" "$TMP_DIR/cover.png"
+cp "$PROJECT_ROOT/LICENSE" "$TMP_DIR/LICENSE"
 cp "$BUILD_LIB" "$TMP_DIR/libnoodleextensions.so"
 
 rm -f "$OUTPUT"
 (
   cd "$TMP_DIR"
-  zip -q -9 -X "$OUTPUT" mod.json cover.png libnoodleextensions.so
+  zip -q -9 -X "$OUTPUT" mod.json cover.png libnoodleextensions.so LICENSE
 )
 
 unzip -tq "$OUTPUT" >/dev/null

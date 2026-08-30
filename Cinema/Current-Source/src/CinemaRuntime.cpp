@@ -1,6 +1,7 @@
 #include "CinemaRuntime.hpp"
 
 #include "CinemaComponents.hpp"
+#include "QuestInterop.hpp"
 #include "main.hpp"
 
 #include <algorithm>
@@ -218,14 +219,27 @@ void Runtime::LateLoad() {
     PaperLogger.info(
         "Cinema is disabled: no runtime GameObject, AssetBundle, RenderTexture or VideoPlayer was created");
   }
-  SongCore::API::Capabilities::RegisterCapability(std::string(kCapability));
+  RefreshCapabilityRegistration(GetCinemaEnabled());
   SongCore::API::LevelSelect::GetLevelWasSelectedEvent() +=
       [](SongCore::API::LevelSelect::LevelWasSelectedEventArgs const& event) {
         std::string root;
+        QuestModInterop::PeerSet required;
         if (event.isCustom && event.customBeatmapLevel != nullptr) {
           root = std::string(event.customBeatmapLevel->customLevelPath);
         }
-        Runtime::Instance().SetSelectedMapRoot(std::move(root));
+        if (event.isCustom && event.customLevelDetails) {
+          required = QuestModInterop::RequiredPeers(
+              event.customLevelDetails->difficultyDetails.requirements);
+        }
+        auto const installed = QuestModInterop::InstalledPeers();
+        PaperLogger.info(
+            "Cinema interop: installed[C={} N={} NE={} V={}] required[C={} N={} NE={} V={}]",
+            installed.cinema, installed.nexora, installed.noodleExtensions,
+            installed.vivify, required.cinema, required.nexora,
+            required.noodleExtensions, required.vivify);
+        Runtime::Instance().SetSelectedMapContext(
+            std::move(root), required.cinema, required.nexora,
+            required.noodleExtensions, required.vivify);
       };
   PaperLogger.info(
       "Cinema Quest runtime ready: local map video only; no downloader, ffmpeg, URL playback or PC payloads");
@@ -290,7 +304,10 @@ void Runtime::LoadAssets() {
   }
 }
 
-void Runtime::SetSelectedMapRoot(std::string mapRoot) {
+void Runtime::SetSelectedMapContext(std::string mapRoot, bool requiresCinema,
+                                    bool requiresNexora,
+                                    bool requiresNoodleExtensions,
+                                    bool requiresVivify) {
   if (!mapRoot.empty()) {
     std::error_code error;
     auto normalized = std::filesystem::weakly_canonical(mapRoot, error);
@@ -300,7 +317,19 @@ void Runtime::SetSelectedMapRoot(std::string mapRoot) {
       mapRoot = normalized.string();
     }
   }
+  bool const nextYieldToNexora = requiresNexora && !requiresCinema;
   _selectedMapRoot = std::move(mapRoot);
+  _selectedMapRequiresCinema = requiresCinema;
+  _selectedMapRequiresNexora = requiresNexora;
+  _selectedMapRequiresNoodleExtensions = requiresNoodleExtensions;
+  _selectedMapRequiresVivify = requiresVivify;
+  _yieldToNexora = nextYieldToNexora;
+  if (_yieldToNexora) {
+    _selectedConfig.reset();
+    PaperLogger.info(
+        "Cinema yielded map video ownership to required Nexora; an explicit Cinema+Nexora requirement keeps both active");
+    return;
+  }
   if (GetCinemaEnabled()) {
     LoadSelectedConfig();
   } else {
@@ -310,7 +339,7 @@ void Runtime::SetSelectedMapRoot(std::string mapRoot) {
 
 void Runtime::LoadSelectedConfig() {
   _selectedConfig.reset();
-  if (_selectedMapRoot.empty()) return;
+  if (_selectedMapRoot.empty() || _yieldToNexora) return;
   _selectedConfig = ParseConfig(_selectedMapRoot);
   if (_selectedConfig) {
     PaperLogger.info("Cinema selected config='{}' video='{}' offset={:.3f}s speed={:.3f}",
@@ -888,12 +917,26 @@ void Runtime::ApplyPauseState() {
 }
 
 void Runtime::SetEnabled(bool enabled) {
+  RefreshCapabilityRegistration(enabled);
   if (!enabled) {
     StopSession();
   } else {
     EnsureBehaviour();
     LoadAssets();
     LoadSelectedConfig();
+  }
+}
+
+void Runtime::RefreshCapabilityRegistration(bool enabled) {
+  bool const registered =
+      SongCore::API::Capabilities::IsCapabilityRegistered(kCapability);
+  if (enabled && !registered) {
+    SongCore::API::Capabilities::RegisterCapability(kCapability);
+    PaperLogger.info("Cinema capability registered because the runtime is enabled");
+  } else if (!enabled && registered) {
+    SongCore::API::Capabilities::UnregisterCapability(kCapability);
+    SongCore::API::PlayButton::EnablePlayButton(std::string(kCapability));
+    PaperLogger.info("Cinema capability unregistered because the runtime is disabled");
   }
 }
 

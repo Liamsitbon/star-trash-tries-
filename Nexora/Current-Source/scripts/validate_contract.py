@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "0.2.5"
+MOD_VERSION = "0.2.6"
 TARGET = "1.40.8_7379"
 
 
@@ -116,6 +116,10 @@ def main() -> int:
         "add_preparecompleted",
         "add_errorreceived",
         "nexora/media",
+        "questmodinterop::inspect",
+        "iscapabilityregistered(kcapability)",
+        "unregistercapability(kcapability)",
+        "if (!getnexoraenabled())",
     ):
         if marker not in runtime_folded:
             fail(f"map-local Quest contract is missing runtime marker: {marker}")

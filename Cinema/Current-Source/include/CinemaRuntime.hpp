@@ -64,7 +64,10 @@ public:
   static Runtime& Instance();
 
   void LateLoad();
-  void SetSelectedMapRoot(std::string mapRoot);
+  void SetSelectedMapContext(std::string mapRoot, bool requiresCinema,
+                             bool requiresNexora, bool requiresNoodleExtensions,
+                             bool requiresVivify);
+  void RefreshCapabilityRegistration(bool enabled);
   void BeginGameplay(GlobalNamespace::AudioTimeSyncController* audioController,
                      float startTimeOffset);
   void SetPaused(bool paused);
@@ -120,6 +123,11 @@ private:
   bool _slowStartPending = false;
   bool _aspectApplied = false;
   bool _decoderFailed = false;
+  bool _yieldToNexora = false;
+  bool _selectedMapRequiresCinema = false;
+  bool _selectedMapRequiresNexora = false;
+  bool _selectedMapRequiresNoodleExtensions = false;
+  bool _selectedMapRequiresVivify = false;
   float _prepareStartedRealtime = 0.0f;
   float _lastSyncRealtime = -1000.0f;
   int _lastErrorFrame = -10000;

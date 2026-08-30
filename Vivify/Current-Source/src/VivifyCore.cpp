@@ -47,7 +47,9 @@ void Runtime::LateLoad() {
   modloader_require_mod(&cjdModInfo, CMatchType::MatchType_IdOnly);
   modloader_require_mod(&tracksModInfo, CMatchType::MatchType_IdOnly);
   EnsureBehaviour();
-  SongCore::API::Capabilities::RegisterCapability(kCapability);
+  if (!SongCore::API::Capabilities::IsCapabilityRegistered(kCapability)) {
+    SongCore::API::Capabilities::RegisterCapability(kCapability);
+  }
   CustomJSONData::CustomEventCallbacks::AddCustomEventCallback(&Runtime::OnCustomEventStatic);
   SongCore::API::LevelSelect::GetLevelWasSelectedEvent() += [](SongCore::API::LevelSelect::LevelWasSelectedEventArgs const& event) {
     Runtime::Instance().HandleLevelSelected(event);

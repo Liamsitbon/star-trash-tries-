@@ -6,9 +6,9 @@ PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 required_files=(
-  CMakeLists.txt qpm.json qpm.shared.json qpm_defines.cmake mod.json cover.png README.md
+  CMakeLists.txt qpm.json qpm.shared.json qpm_defines.cmake mod.json cover.png README.md LICENSE
   src/main.cpp src/NoodleExtensions.cpp src/SpawnDataHelper.cpp
-  include/NECaches.h include/NEHooks.h include/NEConfig.h include/NELogger.h
+  include/NECaches.h include/NEHooks.h include/NEConfig.h include/NELogger.h include/QuestInterop.hpp
   scripts/build.sh scripts/build.ps1 scripts/buildQMOD.sh scripts/validateProject.sh
 )
 
@@ -122,6 +122,15 @@ missing = sorted(required_dependencies - qpm_dependencies)
 if missing:
     fail(f'qpm.json is missing required dependencies: {missing}')
 
+peer_dependencies = {'cinema', 'noodleextensions', 'nexora', 'vivify'}
+hard_peers = sorted(peer_dependencies & {str(value).casefold() for value in qpm_dependencies})
+if hard_peers:
+    fail(f'qpm.json has forbidden hard peer-mod dependencies: {hard_peers}')
+
+license_text = (root / 'LICENSE').read_text(encoding='utf-8')
+if 'MIT License' not in license_text or 'Copyright (c) 2020 Aeroluna' not in license_text:
+    fail('original Noodle Extensions MIT license/attribution is missing')
+
 build_script = qpm.get('workspace', {}).get('scripts', {}).get('build', [])
 if not any('scripts/build.sh' in command for command in build_script):
     fail('qpm build script does not use scripts/build.sh')
@@ -149,6 +158,11 @@ for path in root.rglob('*'):
 
 print(f'Project validation passed: {ids["mod.json"]} {versions["mod.json"]}')
 PY
+
+grep -q -F 'QuestModInterop::Inspect' src/NoodleExtensions.cpp
+grep -q -F 'NECaches::VivifyActive' src/Hooks/SceneTransition/SceneTransitionHelper.cpp
+grep -q -F 'NECaches::NexoraActive' src/Hooks/SceneTransition/SceneTransitionHelper.cpp
+grep -q -F 'NECaches::CinemaActive' src/Hooks/SceneTransition/SceneTransitionHelper.cpp
 
 transform_source="src/Hooks/BeatmapDataTransformHelper.cpp"
 late_source="src/Hooks/FakeNotes/BeatmapData.cpp"

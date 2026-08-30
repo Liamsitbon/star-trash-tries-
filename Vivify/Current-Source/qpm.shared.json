@@ -7,7 +7,7 @@
     "info": {
       "name": "Vivify",
       "id": "vivify",
-      "version": "0.6.8",
+      "version": "0.6.9",
       "url": "https://github.com/axo-lotl/Vivify-Quest",
       "additionalData": {
         "overrideSoName": "libVivify.so",

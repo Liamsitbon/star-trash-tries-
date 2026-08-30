@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "release" / "Cinema-Quest-0.1.1.qmod"
+OUTPUT = ROOT / "release" / "Cinema-Quest-0.1.2.qmod"
 FIXED_TIME = (2026, 8, 29, 0, 0, 0)
 FILES = {
     "mod.json": ROOT / "mod.json",
@@ -20,6 +20,7 @@ FILES = {
     "cinemaassets.android": ROOT / "assets" / "cinemaassets.android",
     "LICENSE": ROOT / "LICENSE",
     "THIRD_PARTY_NOTICES.md": ROOT / "THIRD_PARTY_NOTICES.md",
+    "QuestModInterop-MIT.txt": ROOT / "LICENSES" / "QuestModInterop-MIT.txt",
 }
 
 
@@ -48,7 +49,7 @@ def validate() -> dict[str, object]:
 
     manifest = json.loads(FILES["mod.json"].read_text(encoding="utf-8"))
     if (manifest.get("id") != "cinema" or
-            manifest.get("version") != "0.1.1" or
+            manifest.get("version") != "0.1.2" or
             manifest.get("packageVersion") != "1.40.8_7379"):
         raise SystemExit("Cinema manifest identity/version target is invalid")
     return manifest

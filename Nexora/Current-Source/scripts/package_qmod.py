@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "release" / "Nexora-Quest-0.2.5.qmod"
+OUTPUT = ROOT / "release" / "Nexora-Quest-0.2.6.qmod"
 FIXED_TIME = (2026, 8, 20, 0, 0, 0)
 FILES = {
     "mod.json": ROOT / "mod.json",

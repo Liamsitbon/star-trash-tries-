@@ -209,7 +209,7 @@ if ($LASTEXITCODE -eq 0) {
 
 $hashPaths = @(
     "/sdcard/ModData/$packageId/Modloader/mods/libVivify.so",
-    "/sdcard/ModData/$packageId/Packages/1.40.8_7379/vivify_v0.6.8/libVivify.so"
+    "/sdcard/ModData/$packageId/Packages/1.40.8_7379/vivify_v0.6.9/libVivify.so"
 )
 $hashPath = Join-Path $output "installed-vivify-hashes.txt"
 foreach ($remote in $hashPaths) {
