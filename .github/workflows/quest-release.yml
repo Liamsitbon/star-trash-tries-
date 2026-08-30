@@ -73,7 +73,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes cmake ninja-build zip unzip file
+          sudo apt-get install --yes cmake ninja-build zip unzip file ripgrep
 
       - name: Restore QPM dependencies
         uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
