@@ -1,0 +1,56 @@
+name: Quest map compatibility CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "fix/**"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source and Heck reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Validate patch tool syntax
+        run: python3 -m py_compile tools/apply_quest_runtime_fixes.py
+
+      - name: Apply Quest runtime fixes
+        run: python3 tools/apply_quest_runtime_fixes.py
+
+      - name: Verify patch is idempotent
+        run: |
+          python3 tools/apply_quest_runtime_fixes.py
+          python3 tools/apply_quest_runtime_fixes.py --verify-only
+
+      - name: Validate Nexora source contract
+        run: python3 Nexora/Current-Source/scripts/validate_contract.py
+
+      - name: Validate shared interop contract
+        run: python3 tests/interop_contract_check.py
+
+      - name: Verify Murder Plot and 42-flux regression coverage
+        run: |
+          grep -F 'def check_murder_plot' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'def check_42_flux' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'args.maps_root / "45d7f"' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'args.maps_root / "43999"' Vivify/Current-Source/tests/live_map_contract_check.py
+
+      - name: Verify pinned Heck upstream
+        run: |
+          test -f Heck/Upstream/LICENSE
+          test "$(git -C Heck/Upstream rev-parse HEAD)" = "3bbcaf6733f6faa688a70b296b4d83c92c1f5dc8"
+          git submodule status --recursive
+
+      - name: Reject accidental PC binaries outside submodule metadata
+        run: |
+          if find Cinema Nexora Vivify NE-Fixed -type f \( -iname '*.dll' -o -iname '*.exe' -o -iname '*.dylib' -o -iname '*.pdb' \) -print -quit | grep -q .; then
+            echo 'Unexpected PC/macOS binary found in Quest source trees' >&2
+            exit 1
+          fi
