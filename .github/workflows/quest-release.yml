@@ -75,7 +75,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes cmake ninja-build zip unzip file
 
-      - name: Restore QPM dependencies and NDK
+      - name: Restore QPM dependencies
         uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
         with:
           workflow_token: ${{ secrets.GITHUB_TOKEN }}
@@ -83,7 +83,11 @@ jobs:
           qpm_version: version@1.5.8
           restore: true
           cache: true
-          resolve_ndk: true
+          # ubuntu-24.04 already exports the exact 27.3.13750724 NDK used by
+          # these projects. qpm-action resolves the NDK from the repository
+          # root instead of package_path in a monorepo, so dependency restore
+          # stays here while CMake uses ANDROID_NDK_HOME from the runner.
+          resolve_ndk: false
 
       - name: Build ARM64 library
         working-directory: ${{ matrix.project }}
