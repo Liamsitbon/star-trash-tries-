@@ -49,7 +49,7 @@ void EnsureConfigDefaults() {
       enabled->value.SetBool(false);
     }
     if (safetyReset == document.MemberEnd()) {
-      document.AddMember("safetyReset_0_1_1", true, allocator);
+      document.AddMember("safetyReset_0_2_0", true, allocator);
     } else {
       safetyReset->value.SetBool(true);
     }

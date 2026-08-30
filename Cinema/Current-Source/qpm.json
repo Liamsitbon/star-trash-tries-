@@ -29,6 +29,7 @@
     {"id": "bs-cordl", "versionRange": "4008.*", "additionalData": {}},
     {"id": "songcore", "versionRange": "^1.1.26", "additionalData": {"includeQmod": true}},
     {"id": "bsml", "versionRange": "^0.4.55", "additionalData": {}},
+    {"id": "custom-types", "versionRange": "^0.18.4", "additionalData": {}},
     {"id": "config-utils", "versionRange": "^2.0.3", "additionalData": {}},
     {"id": "scotland2", "versionRange": "^0.1.6", "additionalData": {"includeQmod": false}},
     {"id": "paper2_scotland2", "versionRange": "^4.6.4", "additionalData": {}}

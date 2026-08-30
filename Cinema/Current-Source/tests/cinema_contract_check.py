@@ -49,6 +49,7 @@ def main() -> None:
             "CinemaQuest::InstallHooks();",
             "Cinema disabled startup complete",
             "safetyReset_0_2_0",
+            'document.AddMember("safetyReset_0_2_0", true',
             'document.AddMember("enabled", false',
         ),
         "Mods settings toggle",

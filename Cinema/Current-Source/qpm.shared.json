@@ -59,6 +59,11 @@
         "additionalData": {}
       },
       {
+        "id": "custom-types",
+        "versionRange": "^0.18.4",
+        "additionalData": {}
+      },
+      {
         "id": "config-utils",
         "versionRange": "^2.0.3",
         "additionalData": {}
