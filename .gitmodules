@@ -1,0 +1,4 @@
+[submodule "Heck/Upstream"]
+	path = Heck/Upstream
+	url = https://github.com/Aeroluna/Heck.git
+	branch = master

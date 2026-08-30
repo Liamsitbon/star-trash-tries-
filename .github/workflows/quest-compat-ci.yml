@@ -1,0 +1,106 @@
+name: Quest map compatibility CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "fix/**"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source and Heck reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Validate patch tool syntax
+        run: python3 -m py_compile tools/apply_quest_runtime_fixes.py
+
+      - name: Apply Quest runtime fixes
+        run: python3 tools/apply_quest_runtime_fixes.py
+
+      - name: Verify patch is idempotent
+        run: |
+          python3 tools/apply_quest_runtime_fixes.py
+          python3 tools/apply_quest_runtime_fixes.py --verify-only
+
+      - name: Validate Nexora source contract
+        run: python3 Nexora/Current-Source/scripts/validate_contract.py
+
+      - name: Validate shared interop contract
+        run: python3 tests/interop_contract_check.py
+
+      - name: Verify Murder Plot and 42-flux regression coverage
+        run: |
+          grep -F 'def check_murder_plot' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'def check_42_flux' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'args.maps_root / "45d7f"' Vivify/Current-Source/tests/live_map_contract_check.py
+          grep -F 'args.maps_root / "43999"' Vivify/Current-Source/tests/live_map_contract_check.py
+
+      - name: Verify pinned Heck upstream
+        run: |
+          test -f Heck/Upstream/LICENSE
+          test "$(git -C Heck/Upstream rev-parse HEAD)" = "3bbcaf6733f6faa688a70b296b4d83c92c1f5dc8"
+          git submodule status --recursive
+
+      - name: Reject accidental PC binaries outside submodule metadata
+        run: |
+          if find Cinema Nexora Vivify NE-Fixed -type f \( -iname '*.dll' -o -iname '*.exe' -o -iname '*.dylib' -o -iname '*.pdb' \) -print -quit | grep -q .; then
+            echo 'Unexpected PC/macOS binary found in Quest source trees' >&2
+            exit 1
+          fi
+
+  native-build:
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Cinema
+            project: Cinema/Current-Source
+            build: bash scripts/build.sh
+            package: python3 scripts/package_qmod.py
+            check: python3 tests/cinema_contract_check.py
+          - name: Nexora
+            project: Nexora/Current-Source
+            build: bash scripts/build.sh
+            package: python3 scripts/package_qmod.py
+            check: python3 scripts/validate_contract.py
+
+    name: Build and validate ${{ matrix.name }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build zip unzip file ripgrep
+
+      - name: Restore QPM dependencies
+        uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: ${{ matrix.project }}
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: false
+
+      - name: Build ARM64 library
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.build }}
+
+      - name: Package QMOD
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.package }}
+
+      - name: Run project contract
+        working-directory: ${{ matrix.project }}
+        run: ${{ matrix.check }}
