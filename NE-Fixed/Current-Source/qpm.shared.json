@@ -7,7 +7,7 @@
     "info": {
       "name": "Noodle Extensions",
       "id": "NoodleExtensions",
-      "version": "1.8.11",
+      "version": "1.8.12",
       "url": null,
       "additionalData": {
         "overrideSoName": "libnoodleextensions.so",

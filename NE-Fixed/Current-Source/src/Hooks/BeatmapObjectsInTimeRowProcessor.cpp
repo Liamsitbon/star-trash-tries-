@@ -173,13 +173,67 @@ MAKE_HOOK_MATCH(
       // Plot (and can leave the notes in impossible cut positions).  Keep
       // these visual notes on their authored start row; ordinary notes and
       // sliders retain the upstream ordinal row semantics.
-      bool const authoredAnimatedVisual =
-          (ad.objectData.fake.value_or(false) ||
-           ad.objectData.uninteractable.value_or(false)) &&
-          ad.objectData.disableNoteGravity.value_or(false) &&
-          static_cast<bool>(ad.animationData.definitePosition);
+      // This hook runs inside the game's transformation pass, before
+      // LoadNoodleObjects has populated ObjectCustomData/AnimationObjectData.
+      // Read the authored flags directly from the CustomJSONData wrapper at
+      // this point; relying only on `ad` makes the test false on the first
+      // (and normally only) row-processing pass.
+      bool authoredAnimatedVisual = false;
+      std::optional<float> authoredStartY;
+      if (list[m]->customData && list[m]->customData->value) {
+        rapidjson::Value const& customData = *list[m]->customData->value;
+
+        bool const v3Fake =
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::INTERNAL_FAKE_NOTE)
+                .value_or(false);
+        bool const v2Fake =
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::V2_FAKE_NOTE)
+                .value_or(false);
+        bool const v3Uninteractable =
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::UNINTERACTABLE)
+                .value_or(false);
+        auto const v2Interactable =
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::V2_CUTTABLE);
+        bool const visualOnly =
+            v3Fake || v2Fake || v3Uninteractable ||
+            (v2Interactable.has_value() && !v2Interactable.value());
+
+        bool const gravityDisabled =
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::NOTE_GRAVITY_DISABLE)
+                .value_or(false) ||
+            NEJSON::ReadOptionalBool(customData, NoodleExtensions::Constants::V2_NOTE_GRAVITY_DISABLE)
+                .value_or(false);
+
+        auto animationIt = customData.FindMember(NoodleExtensions::Constants::ANIMATION.data());
+        if (animationIt == customData.MemberEnd()) {
+          animationIt = customData.FindMember(NoodleExtensions::Constants::V2_ANIMATION.data());
+        }
+        bool const hasDefinitePosition =
+            animationIt != customData.MemberEnd() && animationIt->value.IsObject() &&
+            (animationIt->value.HasMember(NoodleExtensions::Constants::DEFINITE_POSITION.data()) ||
+             animationIt->value.HasMember(NoodleExtensions::Constants::V2_DEFINITE_POSITION.data()));
+
+        auto authoredCoordinates =
+            NEJSON::ReadOptionalPair(customData, NoodleExtensions::Constants::NOTE_OFFSET.data());
+        if (!authoredCoordinates.second) {
+          authoredCoordinates =
+              NEJSON::ReadOptionalPair(customData, NoodleExtensions::Constants::V2_POSITION.data());
+        }
+        authoredStartY = authoredCoordinates.second;
+        authoredAnimatedVisual = visualOnly && gravityDisabled && hasDefinitePosition;
+      }
+
+      // Keep the parsed-data path as a compatibility fallback for callers
+      // that invoke this processor after Noodle associated data is ready.
+      authoredAnimatedVisual =
+          authoredAnimatedVisual ||
+          ((ad.objectData.fake.value_or(false) ||
+            ad.objectData.uninteractable.value_or(false)) &&
+           ad.objectData.disableNoteGravity.value_or(false) &&
+           static_cast<bool>(ad.animationData.definitePosition));
       ad.startNoteLineLayer = authoredAnimatedVisual
-                                  ? ad.objectData.startY.value_or(list[m]->noteLineLayer.value__)
+                                  ? authoredStartY.value_or(
+                                        ad.objectData.startY.value_or(list[m]->noteLineLayer.value__))
                                   : static_cast<float>(m);
     }
   }

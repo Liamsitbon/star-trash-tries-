@@ -5,10 +5,10 @@
   "id": "NoodleExtensions",
   "modloader": "Scotland2",
   "author": "StackDoubleFlow / Braxed compatibility fork",
-  "version": "1.8.11",
+  "version": "1.8.12",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Noodle Extensions Quest 1.40.8 1.8.11 with optional SongCore capability interoperability, V3 fake-object parity, dense-note stability and restart-safe lifecycle ownership.",
+  "description": "Noodle Extensions Quest 1.40.8 1.8.12 with optional SongCore capability interoperability, V3 fake-object parity, dense-note stability and restart-safe lifecycle ownership.",
   "coverImage": "cover.png",
   "dependencies": [
     {

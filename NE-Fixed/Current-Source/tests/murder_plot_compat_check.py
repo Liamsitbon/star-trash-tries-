@@ -30,9 +30,15 @@ def check_source(root: Path):
         ("spawn helper override guard", "!inputNjs.has_value() && !inputOffset.has_value()" in spawn),
         ("dense animated fake notes keep authored start row",
          "authoredAnimatedVisual" in row_processor
-         and "ad.objectData.disableNoteGravity.value_or(false)" in row_processor
-         and "ad.animationData.definitePosition" in row_processor
-         and "ad.objectData.startY.value_or(list[m]->noteLineLayer.value__)" in row_processor),
+         and "This hook runs inside the game's transformation pass" in row_processor
+         and "INTERNAL_FAKE_NOTE" in row_processor
+         and "V2_FAKE_NOTE" in row_processor
+         and "UNINTERACTABLE" in row_processor
+         and "NOTE_GRAVITY_DISABLE" in row_processor
+         and "V2_NOTE_GRAVITY_DISABLE" in row_processor
+         and "hasDefinitePosition" in row_processor
+         and "authoredStartY.value_or(" in row_processor
+         and "static_cast<float>(m)" in row_processor),
         ("authored interactability", "if (!isFakeNote)" not in notes),
         ("no unsafe renderer hard-hide",
          "SetNoteRenderersHardHidden" not in notes
