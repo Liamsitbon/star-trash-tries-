@@ -21,7 +21,5 @@ int GetMaxLayers();
 float GetSyncToleranceSeconds();
 float GetPrepareTimeoutSeconds();
 int GetDomeResolution();
-bool GetForceUnlitFallback();
 
 constexpr auto PaperLogger = Paper::ConstLoggerContext("Nexora");
-

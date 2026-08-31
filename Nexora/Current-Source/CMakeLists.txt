@@ -7,12 +7,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
-set(QUEST_NATIVE_VIDEO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../Shared/QuestNativeVideo)
-if(NOT EXISTS "${QUEST_NATIVE_VIDEO_DIR}/src/Player.cpp")
-  # Source archives carry the shared backend beside this project so an
-  # extracted Nexora tree remains buildable without the monorepo.
-  set(QUEST_NATIVE_VIDEO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shared/QuestNativeVideo)
-endif()
 
 add_compile_options(
   -frtti -fexceptions -fvisibility=hidden -fPIE -fPIC
@@ -38,16 +32,12 @@ set(COMPILE_ID ${CMAKE_PROJECT_NAME})
 RECURSE_FILES(cpp_file_list ${SOURCE_DIR}/*.cpp)
 RECURSE_FILES(c_file_list ${SOURCE_DIR}/*.c)
 add_library(${CMAKE_PROJECT_NAME} SHARED ${cpp_file_list} ${c_file_list})
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-  ${QUEST_NATIVE_VIDEO_DIR}/src/Player.cpp
-)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE -llog -lGLESv3)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE -llog)
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -Wl,--gc-sections)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
   ${INCLUDE_DIR}
   ${SHARED_DIR}
-  ${QUEST_NATIVE_VIDEO_DIR}/include
 )
 
 RECURSE_FILES(src_inline_hook_c ${EXTERN_DIR}/includes/beatsaber-hook/shared/inline-hook/*.c)

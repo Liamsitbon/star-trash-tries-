@@ -11,7 +11,6 @@ Development workspace for experimental and porting work around advanced **Beat S
 | [`Vivify/`](./Vivify/) | Quest-side Vivify development and compatibility work |
 | [`Nexora/`](./Nexora/) | Nexora development and integration work |
 | [`NE-Fixed/`](./NE-Fixed/) | Noodle Extensions fixes and compatibility work |
-| [`Cinema/`](./Cinema/) | Cinema-related Quest development/porting work |
 | [`tests/`](./tests/) | Tests and experimental validation |
 | [`.github/`](./.github/) | GitHub workflows and repository configuration |
 
@@ -23,7 +22,6 @@ This workspace is used to investigate and improve advanced Beat Saber visual fea
 - Noodle Extensions compatibility
 - Vivify runtime behavior
 - Nexora 360° video environments
-- Cinema/video functionality
 - performance and stability testing
 - map compatibility testing
 
@@ -32,7 +30,6 @@ This workspace is used to investigate and improve advanced Beat Saber visual fea
 ```text
 .
 ├── .github/
-├── Cinema/
 ├── NE-Fixed/
 ├── Nexora/
 ├── Vivify/

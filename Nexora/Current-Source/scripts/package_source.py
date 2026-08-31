@@ -11,9 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SHARED_ROOT = ROOT / "../../Shared/QuestNativeVideo"
-OUTPUT = ROOT / "release" / "Nexora-0.2.7-source-and-arm64-core.zip"
-PREFIX = "Nexora-0.2.7-source-and-arm64-core"
+OUTPUT = ROOT / "release" / "Nexora-0.3.0-source-and-arm64-core.zip"
+PREFIX = "Nexora-0.3.0-source-and-arm64-core"
 FIXED_TIME = (2026, 8, 20, 0, 0, 0)
 ROOT_FILES = {
     "CMakeLists.txt", "extern.cmake", "qpm_defines.cmake", "qpm.json",
@@ -53,21 +52,11 @@ def main() -> int:
     debug = ROOT / "build" / "debug" / "libNexora.so"
     if not runtime.is_file() or not debug.is_file():
         raise SystemExit("Run scripts/build.sh before packaging source")
-    if not (SHARED_ROOT / "src/Player.cpp").is_file() or not (
-        SHARED_ROOT / "include/QuestNativeVideo/Player.hpp"
-    ).is_file():
-        raise SystemExit("shared QuestNativeVideo source is missing")
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(OUTPUT, "w", compresslevel=9, allowZip64=True) as archive:
         for path in sorted(ROOT.rglob("*"), key=lambda value: value.as_posix().casefold()):
             if wanted(path):
                 add(archive, path, path.relative_to(ROOT).as_posix())
-        for path in sorted(
-            SHARED_ROOT.rglob("*"), key=lambda value: value.as_posix().casefold()
-        ):
-            if path.is_file() and path.name not in SKIP_NAMES and not path.name.startswith("._"):
-                relative = path.relative_to(SHARED_ROOT).as_posix()
-                add(archive, path, f"shared/QuestNativeVideo/{relative}")
         add(archive, runtime, "prebuilt/arm64-v8a/libNexora.so")
         add(archive, debug, "prebuilt/arm64-v8a/debug/libNexora.so")
     with zipfile.ZipFile(OUTPUT) as archive:

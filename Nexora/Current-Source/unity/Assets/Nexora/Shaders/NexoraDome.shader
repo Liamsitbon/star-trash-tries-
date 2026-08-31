@@ -3,6 +3,7 @@ Shader "Nexora/VideoDome"
     Properties
     {
         _MainTex ("360 Video", 2D) = "black" {}
+        [HideInInspector] _VideoReady ("Decoded Video Ready", Float) = 0
         _Tint ("Tint", Color) = (1,1,1,1)
         _Opacity ("Opacity", Range(0,1)) = 1
         _Brightness ("Brightness", Range(0,8)) = 1
@@ -68,6 +69,7 @@ Shader "Nexora/VideoDome"
             sampler2D _MainTex;
             float4 _MainTex_ST;
             float4 _Tint;
+            float _VideoReady;
             float _Opacity, _Brightness, _Exposure, _Saturation, _HueShift;
             float _ProjectionMode, _FlipX, _FlipY, _SwapEyes;
             float _DeformAmplitude, _DeformFrequency, _DeformSpeed;
@@ -142,6 +144,35 @@ Shader "Nexora/VideoDome"
                 float2 uv = i.uv;
                 uv.x = lerp(uv.x, 1.0 - uv.x, _FlipX);
                 uv.y = lerp(uv.y, 1.0 - uv.y, _FlipY);
+
+                // A Nexora map may intentionally disable the stock Beat Saber
+                // environment. Never expose the black texture placeholder while
+                // Android is preparing or has rejected the media. This calm,
+                // symmetric procedural backdrop is replaced only after Unity's
+                // VideoPlayer emits a real frameReady callback.
+                if (_VideoReady < 0.5)
+                {
+                    float2 safetyUV = uv;
+                    float3 safetyColor = lerp(
+                        float3(0.006, 0.012, 0.035),
+                        float3(0.018, 0.055, 0.095),
+                        saturate(safetyUV.y));
+                    float horizon = exp(-abs(safetyUV.y - 0.5) * 42.0);
+                    safetyColor += float3(0.00, 0.16, 0.22) * horizon;
+
+                    float2 gridCell = frac(safetyUV * float2(24.0, 12.0));
+                    float2 gridDistance = min(gridCell, 1.0 - gridCell);
+                    float grid = max(
+                        1.0 - smoothstep(0.0, 0.035, gridDistance.x),
+                        1.0 - smoothstep(0.0, 0.055, gridDistance.y));
+                    safetyColor += float3(0.018, 0.075, 0.095) * grid;
+
+                    float starNoise = Hash(floor(safetyUV * float2(160.0, 80.0)));
+                    float stars = step(0.9965, starNoise) *
+                                  (0.45 + 0.25 * sin(_Time.y * 1.7 + starNoise * 23.0));
+                    safetyColor += stars * float3(0.20, 0.42, 0.48);
+                    return fixed4(safetyColor, 1.0);
+                }
 
                 float eye = (float)unity_StereoEyeIndex;
                 eye = lerp(eye, 1.0 - eye, step(0.5, _SwapEyes));

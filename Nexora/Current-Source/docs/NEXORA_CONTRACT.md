@@ -12,9 +12,14 @@ asset bundles.
   focus changes, and map/scene retirement.
 - Support multiple layers, preload/cross-fade, visual events, mono, over-under,
   and side-by-side projection.
-- Support local MP4 media through Android MediaPlayer and SurfaceTexture,
-  principally H.264 or HEVC. Nexora does not instantiate Unity VideoPlayer or
+- Support local MP4 media through Unity's Android VideoPlayer integration,
+  principally H.264 or HEVC. Unity owns the decoder surface and binds its
+  texture through the same Vulkan renderer used by Beat Saber. Nexora does not
   bundle a desktop codec stack; codec/profile/level support is device-specific.
+- Keep a symmetric procedural safety backdrop visible while a video prepares
+  or after it fails. The authored video dome may replace it only after a real
+  `frameReady` callback and a live Unity texture; a black placeholder is never
+  treated as readiness.
 - Apply camera-event visuals through the Quest Multiview-capable dome shader.
   Nexora must not attach the desktop-style `OnRenderImage` framebuffer path.
 

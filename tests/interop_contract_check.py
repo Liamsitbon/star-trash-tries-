@@ -10,7 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECTS = {
-    "cinema": ROOT / "Cinema/Current-Source",
     "NoodleExtensions": ROOT / "NE-Fixed/Current-Source",
     "nexora": ROOT / "Nexora/Current-Source",
     "vivify": ROOT / "Vivify/Current-Source",
@@ -71,18 +70,7 @@ def main() -> int:
         for header in headers.values()
     }
     if len(semantic_hashes) != 1:
-        fail("the four interoperability headers have drifted")
-
-    cinema_license = (PROJECTS["cinema"] / "LICENSE").read_text(encoding="utf-8")
-    cinema_notices = (PROJECTS["cinema"] / "THIRD_PARTY_NOTICES.md").read_text(
-        encoding="utf-8"
-    )
-    interop_license = (
-        PROJECTS["cinema"] / "LICENSES/QuestModInterop-MIT.txt"
-    ).read_text(encoding="utf-8")
-    require(cinema_license, "GNU GENERAL PUBLIC LICENSE", "Version 3")
-    require(cinema_notices, "Kevga/BeatSaberCinema", "QuestModInterop-MIT.txt")
-    require(interop_license, "MIT License", "Copyright (c) 2026 Liam Sitbon")
+        fail("the three active interoperability headers have drifted")
 
     noodle_license = (PROJECTS["NoodleExtensions"] / "LICENSE").read_text(
         encoding="utf-8"
@@ -93,9 +81,6 @@ def main() -> int:
     require(vivify_license, "MIT License", "Copyright (c) 2025 Aeroluna")
     require(nexora_license, "MIT License", "Copyright (c) 2026 Liam Sitbon")
 
-    cinema_source = (PROJECTS["cinema"] / "src/CinemaRuntime.cpp").read_text(
-        encoding="utf-8"
-    )
     nexora_source = (PROJECTS["nexora"] / "src/NexoraRuntime.cpp").read_text(
         encoding="utf-8"
     )
@@ -106,12 +91,6 @@ def main() -> int:
         PROJECTS["NoodleExtensions"]
         / "src/Hooks/SceneTransition/SceneTransitionHelper.cpp"
     ).read_text(encoding="utf-8")
-    require(
-        cinema_source,
-        "SetSelectedMapContext",
-        "Cinema yielded map video ownership to required Nexora",
-        "UnregisterCapability",
-    )
     require(nexora_source, "QuestModInterop::Inspect", "GetNexoraEnabled()")
     require(vivify_source, "Vivify interop:", "QuestModInterop::InstalledPeers")
     require(
@@ -122,9 +101,9 @@ def main() -> int:
     )
 
     print(
-        "Quest interoperability contract passed: four independent QMODs, "
-        "public SongCore capability discovery, optional peer behavior, and "
-        "MIT/GPL license boundaries preserved"
+        "Quest interoperability contract passed: three active independent QMODs, "
+        "public SongCore capability discovery (including optional external Cinema "
+        "detection), and MIT license boundaries preserved"
     )
     return 0
 

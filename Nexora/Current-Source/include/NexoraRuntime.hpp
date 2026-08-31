@@ -1,13 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
 
 #include "NexoraLifecycle.hpp"
 #include "GlobalNamespace/AudioTimeSyncController.hpp"
@@ -22,7 +20,7 @@
 #include "UnityEngine/Renderer.hpp"
 #include "UnityEngine/Vector2.hpp"
 #include "UnityEngine/Vector3.hpp"
-#include "QuestNativeVideo/Player.hpp"
+#include "UnityEngine/Video/VideoPlayer.hpp"
 #include "custom-json-data/shared/CustomEventData.h"
 #include "beatsaber-hook/shared/config/rapidjson-utils.hpp"
 #include "beatsaber-hook/shared/utils/typedefs-wrappers.hpp"
@@ -126,7 +124,10 @@ struct DomeLayer {
   UnityEngine::Mesh* mesh = nullptr;
   UnityEngine::Renderer* renderer = nullptr;
   UnityEngine::Material* material = nullptr;
-  std::shared_ptr<QuestNativeVideo::Player> video;
+  UnityEngine::Video::VideoPlayer* video = nullptr;
+  UnityEngine::Video::VideoPlayer_FrameReadyEventHandler* frameReadyDelegate = nullptr;
+  UnityEngine::Video::VideoPlayer_EventHandler* prepareCompletedDelegate = nullptr;
+  UnityEngine::Video::VideoPlayer_ErrorEventHandler* errorReceivedDelegate = nullptr;
   DomeVisual visual{};
   Animation<DomeVisual> animation{};
   UnityEngine::Vector3 offset = UnityEngine::Vector3::get_zero();
@@ -135,8 +136,8 @@ struct DomeLayer {
   bool syncToSong = true;
   bool resumeAfterPause = false;
   bool prepareFailed = false;
-  bool preparedLogged = false;
   bool textureBound = false;
+  bool safetyVisible = false;
   bool customShader = false;
   bool looping = false;
   float eventStartSongTime = 0.0f;
@@ -154,6 +155,10 @@ public:
 
   void LateLoad();
   void Update();
+  void OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
+                         std::int64_t frameIndex);
+  void OnVideoPrepared(UnityEngine::Video::VideoPlayer* player);
+  void OnVideoError(UnityEngine::Video::VideoPlayer* player, StringW message);
   void SetPaused(bool paused);
   void SetApplicationPaused(bool paused);
   void SetFocused(bool focused);
@@ -186,9 +191,6 @@ private:
   void InitPropertyIds();
 
   UnityEngine::Mesh* CreateProceduralDomeMesh(int rings, int segments, float radius);
-  UnityEngine::Shader* FindUsableShader();
-  std::shared_ptr<QuestNativeVideo::Player> AcquireNativeVideo(
-      std::string const& domeId);
 
   DomeLayer* EnsureDome(std::string const& id);
   void DestroyDome(std::string const& id, bool canTouchUnity = true);
@@ -229,7 +231,6 @@ private:
   SafePtrUnity<UnityEngine::Material> _domeTemplate;
   SafePtrUnity<UnityEngine::Shader> _domeShader;
   std::unordered_map<std::string, DomeLayer> _domes;
-  std::vector<std::shared_ptr<QuestNativeVideo::Player>> _videoPool;
   CameraVisual _cameraVisual{};
   Animation<CameraVisual> _cameraAnimation{};
   std::uint64_t _sessionGeneration = 0;

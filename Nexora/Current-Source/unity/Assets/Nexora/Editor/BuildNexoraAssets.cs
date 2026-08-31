@@ -28,7 +28,8 @@ namespace Nexora.Editor
             foreach (var requiredToken in new[]
                      {
                          "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON",
-                         "_FlipY", "_SwapEyes", "_CameraAmount", "ZTest LEqual"
+                         "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady",
+                         "frameReady callback", "ZTest LEqual"
                      })
             {
                 if (!shaderSource.Contains(requiredToken))

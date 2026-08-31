@@ -21,7 +21,6 @@ int gMaxLayers = 3;
 float gSyncTolerance = 0.085f;
 float gPrepareTimeout = 18.0f;
 int gDomeResolution = 48;
-bool gForceUnlitFallback = false;
 
 constexpr std::string_view kNexoraLogDir = "/sdcard/ModData/com.beatgames.beatsaber/Logs";
 constexpr std::string_view kNexoraLogPath = "/sdcard/ModData/com.beatgames.beatsaber/Logs/Nexora.log";
@@ -115,7 +114,7 @@ void InstallNexoraFileLogSink() {
                  << " maxLayers=" << gMaxLayers
                  << " syncTol=" << gSyncTolerance
                  << " domeRes=" << gDomeResolution
-                 << " unlitFallback=" << (gForceUnlitFallback ? "true" : "false")
+                 << " rendererPath=UnityMaterialOverride"
                  << "\n";
   gNexoraLogFile.flush();
 
@@ -136,7 +135,6 @@ int GetMaxLayers() { return gMaxLayers; }
 float GetSyncToleranceSeconds() { return gSyncTolerance; }
 float GetPrepareTimeoutSeconds() { return gPrepareTimeout; }
 int GetDomeResolution() { return gDomeResolution; }
-bool GetForceUnlitFallback() { return gForceUnlitFallback; }
 
 void EnsureConfigDefaults() {
   auto& configuration = getConfig();
@@ -150,7 +148,6 @@ void EnsureConfigDefaults() {
   changed |= EnsureFloat("syncToleranceSeconds", 0.085f, 0.02f, 0.5f, gSyncTolerance);
   changed |= EnsureFloat("prepareTimeoutSeconds", 18.0f, 5.0f, 60.0f, gPrepareTimeout);
   changed |= EnsureInt("domeResolution", 48, 16, 96, gDomeResolution);
-  changed |= EnsureBool("forceUnlitFallback", false, gForceUnlitFallback);
   if (changed) configuration.Write();
 }
 
@@ -169,4 +166,3 @@ MOD_EXTERN_FUNC void late_load() noexcept {
   custom_types::Register::AutoRegister();
   Nexora::LateLoad();
 }
-

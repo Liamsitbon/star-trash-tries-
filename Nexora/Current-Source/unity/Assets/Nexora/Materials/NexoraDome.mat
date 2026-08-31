@@ -65,6 +65,7 @@ Material:
     - _SrcBlend: 5
     - _SwapEyes: 0
     - _Twist: 0
+    - _VideoReady: 0
     - _Vignette: 0
     m_Colors:
     - _CameraTint: {r: 1, g: 1, b: 1, a: 1}

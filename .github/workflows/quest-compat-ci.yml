@@ -26,7 +26,6 @@ jobs:
 
       - name: Verify decoder check is read-only
         run: |
-          python3 tools/apply_quest_runtime_fixes.py --component cinema --verify-only
           python3 tools/apply_quest_runtime_fixes.py --component nexora --verify-only
           git diff --exit-code
 
@@ -62,7 +61,7 @@ jobs:
 
       - name: Reject accidental PC binaries outside submodule metadata
         run: |
-          if find Cinema Nexora Vivify NE-Fixed -type f \( -iname '*.dll' -o -iname '*.exe' -o -iname '*.dylib' -o -iname '*.pdb' \) -print -quit | grep -q .; then
+          if find Nexora Vivify NE-Fixed -type f \( -iname '*.dll' -o -iname '*.exe' -o -iname '*.dylib' -o -iname '*.pdb' \) -print -quit | grep -q .; then
             echo 'Unexpected PC/macOS binary found in Quest source trees' >&2
             exit 1
           fi
@@ -74,11 +73,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Cinema
-            project: Cinema/Current-Source
-            build: bash scripts/build.sh
-            package: python3 scripts/package_qmod.py
-            check: python3 tests/cinema_contract_check.py
           - name: Nexora
             project: Nexora/Current-Source
             build: bash scripts/build.sh

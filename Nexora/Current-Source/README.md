@@ -1,4 +1,4 @@
-# Nexora 0.2.1 — Beat Saber Quest
+# Nexora 0.3.0 — Beat Saber Quest
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.
@@ -33,6 +33,10 @@ Vivify camera/gameplay effects can remain live and separate.
   attaches a framebuffer `OnRenderImage` component, avoiding the known
   Single-Pass Multiview compositor-freeze path and keeping Nexora independent
   from Vivify's render pipeline.
+- Unity owns Android video decoding and material binding inside Beat Saber's
+  Vulkan renderer. A symmetric procedural safety backdrop remains visible
+  until a real decoded `frameReady` callback replaces it, so maps that disable
+  the stock environment do not collapse into a black world on decoder failure.
 
 ## Map example
 
@@ -83,7 +87,7 @@ python3 ./scripts/package_qmod.py
 python3 ./scripts/package_source.py
 ```
 
-Output: `release/Nexora-Quest-0.2.1.qmod`. The package script requires a real
+Output: `release/Nexora-Quest-0.3.0.qmod`. The package script requires a real
 Android UnityFS shader bundle, AArch64 ELF runtime, correct manifest target and
 clean ZIP without macOS metadata.
 

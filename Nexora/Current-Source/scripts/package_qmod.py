@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "release" / "Nexora-Quest-0.2.7.qmod"
+OUTPUT = ROOT / "release" / "Nexora-Quest-0.3.0.qmod"
 FIXED_TIME = (2026, 8, 20, 0, 0, 0)
 FILES = {
     "mod.json": ROOT / "mod.json",
@@ -48,7 +48,7 @@ def validate() -> dict[str, object]:
 
     manifest = json.loads(FILES["mod.json"].read_text(encoding="utf-8"))
     if (manifest.get("id") != "nexora" or
-            manifest.get("version") != "0.2.7" or
+            manifest.get("version") != "0.3.0" or
             manifest.get("packageVersion") != "1.40.8_7379"):
         raise SystemExit("mod.json identity, version, or Beat Saber target is invalid")
     return manifest

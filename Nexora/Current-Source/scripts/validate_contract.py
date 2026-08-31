@@ -9,12 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BUNDLE_ROOT = ROOT.parents[1]
-SHARED_ROOT = BUNDLE_ROOT / "Shared/QuestNativeVideo"
-if not (SHARED_ROOT / "src/Player.cpp").is_file():
-    SHARED_ROOT = ROOT / "shared/QuestNativeVideo"
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "0.2.7"
+MOD_VERSION = "0.3.0"
 TARGET = "1.40.8_7379"
 
 
@@ -40,9 +36,7 @@ def main() -> int:
     header = (ROOT / "include/NexoraRuntime.hpp").read_text(encoding="utf-8")
     runtime = (ROOT / "src/NexoraRuntime.cpp").read_text(encoding="utf-8")
     runtime_folded = runtime.casefold()
-    native_video = (
-        SHARED_ROOT / "src/Player.cpp"
-    ).read_text(encoding="utf-8")
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8").casefold()
     components = (ROOT / "include/NexoraComponents.hpp").read_text(encoding="utf-8")
     shader = (ROOT / "unity/Assets/Nexora/Shaders/NexoraDome.shader").read_text(
         encoding="utf-8"
@@ -120,13 +114,17 @@ def main() -> int:
         "containsnexoraevents",
         "songcore did not report its requirement",
         "beatmapcallbacksupdater",
-        "acquirenativevideo",
-        "questnativevideo::player::create",
-        "dome.video->open",
-        "dome.video->tick",
-        "dome.video->hasframe",
-        "videopipeline=androidsurface",
-        "produced no first frame within",
+        "unityengine::video::videoplayer",
+        "videorendermode::materialoverride",
+        "set_targetmaterialrenderer",
+        'set_targetmaterialproperty(stringw("_maintex"))',
+        "set_waitforfirstframe(true)",
+        "set_sendframereadyevents(true)",
+        "onvideoframeready",
+        "safetyvisible",
+        "s_propvideoready",
+        "safety backdrop remains visible",
+        "androidvideomedia",
         "nexora/media",
         "questmodinterop::inspect",
         "iscapabilityregistered(kcapability)",
@@ -136,26 +134,22 @@ def main() -> int:
         if marker not in runtime_folded:
             fail(f"map-local Quest contract is missing runtime marker: {marker}")
 
-    if "unityengine::video" in runtime_folded or "videoplayer" in runtime_folded:
-        fail("runtime regressed to Unity VideoPlayer")
-    native_video_folded = native_video.casefold()
-    for marker in (
-        'findclass("android/media/mediaplayer")',
-        'findclass("android/graphics/surfacetexture")',
+    retired_backend_markers = (
+        "questnativevideo",
+        "surfacetexture",
         "gl_texture_external_oes",
-        "texture2d::createexternaltexture",
-        "gl::issuepluginevent",
-        "backendfatal",
-        "newjavastring",
-        "decoder surface creation timed out",
-        "gl_draw_framebuffer_binding",
-        "gl_color_clear_value",
-    ):
-        if marker not in native_video_folded:
-            fail(f"Android native decoder is missing: {marker}")
+        "createexternaltexture",
+        "issuepluginevent",
+        "android/media/mediaplayer",
+    )
+    for marker in retired_backend_markers:
+        if marker in runtime_folded or marker in header.casefold() or marker in cmake:
+            fail(f"retired cross-API video backend is still reachable: {marker}")
+    if "-lglesv3" in cmake:
+        fail("Nexora still links the retired OpenGL ES video bridge")
     for marker in ("ffmpeg", "libavcodec", "exoplayer"):
-        if marker in native_video_folded:
-            fail(f"native decoder contains an unapproved codec/player stack: {marker}")
+        if marker in runtime_folded or marker in cmake:
+            fail(f"runtime contains an unapproved codec/player stack: {marker}")
 
     for asset_type, field in (
         ("UnityEngine::AssetBundle", "_assetBundle"),
@@ -199,13 +193,16 @@ def main() -> int:
         "_CameraAmount",
         "_CameraFisheye",
         "_CameraGlitch",
+        "_VideoReady",
+        "frameReady callback",
     )
     for token in required_shader_tokens:
         if token not in shader:
             fail(f"Quest shader is missing: {token}")
         if token not in builder and token in {
             "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON", "ZTest LEqual",
-            "_FlipY", "_SwapEyes", "_CameraAmount"
+            "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady",
+            "frameReady callback"
         }:
             fail(f"Unity builder does not assert shader contract token: {token}")
     if "NexoraCameraFX" in builder or "NexoraCameraFX" in runtime:
@@ -231,7 +228,8 @@ def main() -> int:
     print(
         "Nexora Quest contract validation passed: "
         f"{len(known_events)} events, target {TARGET}, scene-safe assets, "
-        "Android MediaPlayer surface, no PC framebuffer path/artifacts"
+        "Vulkan-safe Unity MaterialOverride video, no-black safety gate, "
+        "no PC framebuffer path/artifacts"
     )
     return 0
 

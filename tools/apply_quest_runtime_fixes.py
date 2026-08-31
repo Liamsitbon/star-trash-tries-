@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Verify the stable Quest-native video boundary used by Cinema and Nexora.
+"""Verify Nexora's stable Quest/Vulkan video boundary.
 
 This used to rewrite the runtime sources immediately before every build. That was
-fragile and could silently restore Unity VideoPlayer code. It is deliberately
-read-only now: the checked-in source is the single build input and a stale video
-pipeline fails the build instead of being patched behind the developer's back.
+fragile. It is deliberately read-only now: the checked-in source is the single
+build input and the retired OpenGL/SurfaceTexture bridge fails the build instead
+of being patched behind the developer's back.
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-SHARED = REPO / "Shared/QuestNativeVideo/src/Player.cpp"
-SHARED_HEADER = REPO / "Shared/QuestNativeVideo/include/QuestNativeVideo/Player.hpp"
-CINEMA = REPO / "Cinema/Current-Source/src/CinemaRuntime.cpp"
-CINEMA_CMAKE = REPO / "Cinema/Current-Source/CMakeLists.txt"
 NEXORA = REPO / "Nexora/Current-Source/src/NexoraRuntime.cpp"
+NEXORA_HEADER = REPO / "Nexora/Current-Source/include/NexoraRuntime.hpp"
 NEXORA_CMAKE = REPO / "Nexora/Current-Source/CMakeLists.txt"
+NEXORA_SHADER = (
+    REPO / "Nexora/Current-Source/unity/Assets/Nexora/Shaders/NexoraDome.shader"
+)
 
 
 def require_tokens(label: str, text: str, tokens: tuple[str, ...]) -> list[str]:
@@ -31,117 +31,72 @@ def reject_tokens(label: str, text: str, tokens: tuple[str, ...]) -> list[str]:
 
 
 def verify(component: str) -> None:
-    shared = SHARED.read_text(encoding="utf-8")
-    shared_header = SHARED_HEADER.read_text(encoding="utf-8")
+    del component  # Retained as a CLI compatibility argument.
+    nexora = NEXORA.read_text(encoding="utf-8")
+    header = NEXORA_HEADER.read_text(encoding="utf-8")
+    cmake = NEXORA_CMAKE.read_text(encoding="utf-8")
+    shader = NEXORA_SHADER.read_text(encoding="utf-8")
     failures = require_tokens(
-        "shared native backend",
-        shared,
+        "Nexora runtime",
+        nexora,
         (
-            'FindClass("android/media/MediaPlayer")',
-            'FindClass("android/graphics/SurfaceTexture")',
-            "GL_TEXTURE_EXTERNAL_OES",
-            "Texture2D::CreateExternalTexture",
-            "GL::IssuePluginEvent",
-            "backendFatal",
-            "prepare is intentional here",
-            "NewJavaString",
-            "Android Java VM attachment timed out",
-            "decoder surface creation timed out",
-            "GL_DRAW_FRAMEBUFFER_BINDING",
-            "GL_COLOR_CLEAR_VALUE",
+            "UnityEngine::Video::VideoPlayer",
+            "VideoRenderMode::MaterialOverride",
+            "set_targetMaterialRenderer",
+            'set_targetMaterialProperty(StringW("_MainTex"))',
+            "set_waitForFirstFrame(true)",
+            "set_sendFrameReadyEvents(true)",
+            "OnVideoFrameReady",
+            "safetyVisible",
+            "s_propVideoReady",
+            "safety backdrop remains visible",
+            "AndroidVideoMedia",
         ),
     )
     failures += require_tokens(
-        "shared native header",
-        shared_header,
-        ("SafePtrUnity<UnityEngine::Texture2D>",),
+        "Nexora header",
+        header,
+        ("UnityEngine/Video/VideoPlayer.hpp", "bool safetyVisible = false;"),
     )
+    failures += require_tokens(
+        "Nexora shader",
+        shader,
+        ("_VideoReady", "frameReady callback", "if (_VideoReady < 0.5)"),
+    )
+    retired = (
+        "QuestNativeVideo",
+        "SurfaceTexture",
+        "GL_TEXTURE_EXTERNAL_OES",
+        "CreateExternalTexture",
+        "IssuePluginEvent",
+        "android/media/MediaPlayer",
+        "-lGLESv3",
+    )
+    failures += reject_tokens("Nexora runtime", nexora, retired)
+    failures += reject_tokens("Nexora header", header, retired)
+    failures += reject_tokens("Nexora build", cmake, retired)
     failures += reject_tokens(
-        "shared native backend",
-        shared.lower(),
-        (
-            "unityengine/video/videoplayer",
-            "ffmpeg",
-            "libavcodec",
-            "exoplayer",
-        ),
+        "Nexora runtime/build",
+        (nexora + "\n" + cmake).lower(),
+        ("ffmpeg", "libavcodec", "exoplayer"),
     )
-
-    if component in ("all", "cinema"):
-        cinema = CINEMA.read_text(encoding="utf-8")
-        cmake = CINEMA_CMAKE.read_text(encoding="utf-8")
-        failures += require_tokens(
-            "Cinema runtime",
-            cinema,
-            (
-                "QuestNativeVideo::Player::Create",
-                "_nativeVideo->Open",
-                "_nativeVideo->Tick",
-                "_nativeVideo->HasFrame",
-                "_nativeVideo->Stop",
-            ),
-        )
-        failures += require_tokens(
-            "Cinema build",
-            cmake,
-            ("QuestNativeVideo", "-lGLESv3"),
-        )
-        failures += reject_tokens(
-            "Cinema runtime",
-            cinema,
-            (
-                "UnityEngine::Video",
-                "VideoRenderMode",
-                "UnityEngine::Video::VideoPlayer",
-            ),
-        )
-
-    if component in ("all", "nexora"):
-        nexora = NEXORA.read_text(encoding="utf-8")
-        cmake = NEXORA_CMAKE.read_text(encoding="utf-8")
-        failures += require_tokens(
-            "Nexora runtime",
-            nexora,
-            (
-                "AcquireNativeVideo",
-                "QuestNativeVideo::Player::Create",
-                "dome.video->Open",
-                "dome.video->Tick",
-                "dome.video->HasFrame",
-                "videoPipeline=AndroidSurface",
-            ),
-        )
-        failures += require_tokens(
-            "Nexora build",
-            cmake,
-            ("QuestNativeVideo", "-lGLESv3"),
-        )
-        failures += reject_tokens(
-            "Nexora runtime",
-            nexora,
-            (
-                "UnityEngine::Video",
-                "VideoRenderMode",
-                "UnityEngine::Video::VideoPlayer",
-            ),
-        )
 
     if failures:
         raise RuntimeError(
-            "Quest native-video verification failed:\n  - " + "\n  - ".join(failures)
+            "Quest Vulkan-video verification failed:\n  - " + "\n  - ".join(failures)
         )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--component", choices=("all", "cinema", "nexora"), default="all")
+    parser.add_argument("--component", choices=("all", "nexora"), default="all")
     # Retained for compatibility with existing CI/build invocations. Verification
     # is now the only mode, even when this flag is omitted.
     parser.add_argument("--verify-only", action="store_true")
     args = parser.parse_args()
 
     verify(args.component)
-    print(f"Quest native-video boundary: PASS ({args.component}, read-only)")
+    print(f"Quest Vulkan-video boundary: PASS ({args.component}, read-only)")
     return 0
 
 
