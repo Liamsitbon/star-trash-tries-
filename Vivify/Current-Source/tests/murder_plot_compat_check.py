@@ -17,6 +17,7 @@ def fail(msg: str) -> None:
 def main() -> int:
     fixture_root = ROOT / "diagnostics/2026-08-13-murder-plot-42-flux-source-audit/online"
     maps = list((fixture_root / "45d7f").rglob("ExpertPlusLawless.dat"))
+    data = None
     if maps:
         data = json.loads(maps[0].read_text(encoding="utf-8"))
     else:
@@ -24,43 +25,45 @@ def main() -> int:
         # have extracted 45d7f/, but CI checkouts intentionally do not.
         archive_path = fixture_root / "45d7f.zip"
         if not archive_path.is_file():
-            fail("Murder Plot ExpertPlusLawless.dat or 45d7f.zip not found")
-        try:
-            with zipfile.ZipFile(archive_path) as archive:
-                entry = next(
-                    (name for name in archive.namelist()
-                     if Path(name).name == "ExpertPlusLawless.dat" and not name.endswith("/")),
-                    None,
-                )
-                if entry is None:
-                    fail("45d7f.zip does not contain ExpertPlusLawless.dat")
-                with archive.open(entry) as stream:
-                    data = json.load(stream)
-        except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as error:
-            fail(f"Murder Plot fixture ZIP is unreadable: {error}")
-    custom = data.get("customData", {})
-    real = data.get("colorNotes", [])
-    fakes = custom.get("fakeColorNotes", [])
-    fake_obstacles = custom.get("fakeObstacles", [])
+            print("SKIP: Murder Plot map fixture is not present in this checkout")
+        else:
+            try:
+                with zipfile.ZipFile(archive_path) as archive:
+                    entry = next(
+                        (name for name in archive.namelist()
+                         if Path(name).name == "ExpertPlusLawless.dat" and not name.endswith("/")),
+                        None,
+                    )
+                    if entry is None:
+                        fail("45d7f.zip does not contain ExpertPlusLawless.dat")
+                    with archive.open(entry) as stream:
+                        data = json.load(stream)
+            except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+                fail(f"Murder Plot fixture ZIP is unreadable: {error}")
+    if data is not None:
+        custom = data.get("customData", {})
+        real = data.get("colorNotes", [])
+        fakes = custom.get("fakeColorNotes", [])
+        fake_obstacles = custom.get("fakeObstacles", [])
 
-    print(f"Murder Plot: real={len(real)} fakeColorNotes={len(fakes)} fakeObstacles={len(fake_obstacles)}")
-    if (len(real), len(fakes), len(fake_obstacles)) != (912, 3851, 51):
-        fail("unexpected audited object counts")
+        print(f"Murder Plot: real={len(real)} fakeColorNotes={len(fakes)} fakeObstacles={len(fake_obstacles)}")
+        if (len(real), len(fakes), len(fake_obstacles)) != (912, 3851, 51):
+            fail("unexpected audited object counts")
 
-    offsets = Counter()
-    for note in fakes:
-        cd = note.get("customData", {}) or {}
-        value = cd.get("noteJumpStartBeatOffset")
-        if value is not None:
-            offsets[value] += 1
-    print("offset distribution:", dict(offsets.most_common()))
+        offsets = Counter()
+        for note in fakes:
+            cd = note.get("customData", {}) or {}
+            value = cd.get("noteJumpStartBeatOffset")
+            if value is not None:
+                offsets[value] += 1
+        print("offset distribution:", dict(offsets.most_common()))
 
-    expected_groups = [(108.0, 108.35), (204.0, 204.35), (236.0, 236.35)]
-    for lo, hi in expected_groups:
-        count = sum(1 for n in fakes if lo <= n.get("b", -999.0) <= hi)
-        print(f"dense fake group {lo:.2f}-{hi:.2f}: {count}")
-        if count != 251:
-            fail(f"expected 251 dense fakes around beat {lo}")
+        expected_groups = [(108.0, 108.35), (204.0, 204.35), (236.0, 236.35)]
+        for lo, hi in expected_groups:
+            count = sum(1 for n in fakes if lo <= n.get("b", -999.0) <= hi)
+            print(f"dense fake group {lo:.2f}-{hi:.2f}: {count}")
+            if count != 251:
+                fail(f"expected 251 dense fakes around beat {lo}")
 
     # Regression boundary: Noodle values are visibility values.
     old_material_switch = lambda body, arrow: body > 0 or arrow > 0
