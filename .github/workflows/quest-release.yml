@@ -142,9 +142,21 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Package source snapshot
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          # Keep the source archive aligned with the tagged mod sources. The
+          # repository also remains browsable on GitHub; this explicit archive
+          # makes the source easy to download beside the QMODs.
+          git archive --format=tar.gz \
+            --prefix="star-trash-tries-${RELEASE_TAG}/" \
+            "${RELEASE_TAG}" \
+            > "dist/star-trash-tries-${RELEASE_TAG}-source.tar.gz"
+
       - name: Create checksums
         working-directory: dist
-        run: sha256sum *.qmod > SHA256SUMS
+        run: sha256sum *.qmod *.tar.gz > SHA256SUMS
 
       - name: Create or update GitHub Release
         env:
@@ -152,9 +164,9 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/*.qmod dist/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" dist/*.qmod dist/SHA256SUMS \
+            gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Quest mods for Beat Saber 1.40.8_7379" \
