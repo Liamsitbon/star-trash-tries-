@@ -61,7 +61,20 @@ def verify(component: str) -> None:
     failures += require_tokens(
         "Nexora shader",
         shader,
-        ("_VideoReady", "frameReady callback", "if (_VideoReady < 0.5)"),
+        (
+            "_VideoReady",
+            "if (_VideoReady < 0.5)",
+            "STEREO_MULTIVIEW_ON",
+            "STEREO_INSTANCING_ON",
+            "UNITY_VERTEX_INPUT_INSTANCE_ID",
+            "UNITY_VERTEX_OUTPUT_STEREO",
+            "UNITY_SETUP_INSTANCE_ID",
+            "UNITY_INITIALIZE_OUTPUT",
+            "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
+            "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX",
+            "PackVideoUV",
+            "_Opacity * _Tint.a",
+        ),
     )
     retired = (
         "QuestNativeVideo",

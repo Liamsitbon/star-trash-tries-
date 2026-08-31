@@ -115,6 +115,19 @@ Shader "Nexora/VideoDome"
                 return frac(sin(dot(value, float2(12.9898, 78.233))) * 43758.5453);
             }
 
+            float2 PackVideoUV(float2 localUV, float eye)
+            {
+                // Effects may move a sample outside the eye-local rectangle.
+                // Clamp before packing so a sampler with Repeat state can never
+                // wrap an SBS/OU sample into the other eye's half.
+                localUV = saturate(localUV);
+                if (_ProjectionMode > 1.5)
+                    localUV.x = localUV.x * 0.5 + (eye > 0.5 ? 0.5 : 0.0);
+                else if (_ProjectionMode > 0.5)
+                    localUV.y = localUV.y * 0.5 + (eye > 0.5 ? 0.0 : 0.5);
+                return localUV;
+            }
+
             v2f vert(appdata v)
             {
                 v2f o;
@@ -171,17 +184,16 @@ Shader "Nexora/VideoDome"
                     float stars = step(0.9965, starNoise) *
                                   (0.45 + 0.25 * sin(_Time.y * 1.7 + starNoise * 23.0));
                     safetyColor += stars * float3(0.20, 0.42, 0.48);
-                    return fixed4(safetyColor, 1.0);
+                    return fixed4(safetyColor, _Opacity * _Tint.a);
                 }
 
                 float eye = (float)unity_StereoEyeIndex;
                 eye = lerp(eye, 1.0 - eye, step(0.5, _SwapEyes));
 
-                if (_ProjectionMode > 1.5)
-                    uv.x = uv.x * 0.5 + (eye > 0.5 ? 0.5 : 0.0);
-                else if (_ProjectionMode > 0.5)
-                    uv.y = uv.y * 0.5 + (eye > 0.5 ? 0.0 : 0.5);
-
+                // Keep all geometric and camera effects in eye-local 0..1 UV
+                // space. Packing before distortion makes the two stereo eyes
+                // use different centers and can sample across the eye boundary.
+                // Only pack each final texture lookup.
                 float cameraAmount = saturate(_CameraAmount);
                 float2 cameraCentered = uv - 0.5;
                 float cameraRadius = length(cameraCentered);
@@ -234,9 +246,9 @@ Shader "Nexora/VideoDome"
                     normalize(centered + 0.0001) *
                     (_Chromatic + _CameraChromatic * cameraAmount);
                 float2 splitDirection = chromaDirection + float2(cameraSplit, 0.0);
-                float r = tex2D(_MainTex, uv + splitDirection).r;
-                float g = tex2D(_MainTex, uv).g;
-                float b = tex2D(_MainTex, uv - splitDirection).b;
+                float r = tex2D(_MainTex, PackVideoUV(uv + splitDirection, eye)).r;
+                float g = tex2D(_MainTex, PackVideoUV(uv, eye)).g;
+                float b = tex2D(_MainTex, PackVideoUV(uv - splitDirection, eye)).b;
                 float3 color = float3(r, g, b);
                 color = HueRotate(color, _HueShift + _CameraHueShift * cameraAmount);
                 float luminance = dot(color, float3(0.2126, 0.7152, 0.0722));

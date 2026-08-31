@@ -55,12 +55,15 @@ rejected.
 
 Packing a stereo source into the wrong total aspect ratio creates stretching;
 `scripts/prepare_media.py --projection ...` preserves the selected geometry
-and warns when its input aspect does not match.
+and refuses a mismatched input by default. HEVC/high-resolution profiles also
+require `--allow-experimental` because only the exact target headset can prove
+its current decoder ceiling while Beat Saber is running.
 
 ## Proof boundary
 
-Source validation, an Android UnityFS shader bundle, an AArch64 native build,
-and a valid QMOD establish project/package consistency. They do not prove
+Source validation, an Android UnityFS shader bundle whose provenance hashes
+match the current shader/material/builder, an AArch64 native build, and a valid
+QMOD establish project/package consistency. They do not prove
 decoder support, correct stereo in both eyes, sustained framerate, or lifecycle
 stability on hardware. Those require the exact map and media on the target
 Quest.

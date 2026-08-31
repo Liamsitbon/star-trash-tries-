@@ -32,6 +32,7 @@ set(COMPILE_ID ${CMAKE_PROJECT_NAME})
 RECURSE_FILES(cpp_file_list ${SOURCE_DIR}/*.cpp)
 RECURSE_FILES(c_file_list ${SOURCE_DIR}/*.c)
 add_library(${CMAKE_PROJECT_NAME} SHARED ${cpp_file_list} ${c_file_list})
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Werror=return-type)
 
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE -llog)
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -Wl,--gc-sections)

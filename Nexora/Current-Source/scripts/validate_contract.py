@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "0.3.0"
+MOD_VERSION = "0.3.1"
 TARGET = "1.40.8_7379"
+UNITY_VERSION = "2021.3.16f1"
+ASSET_BUNDLE = ROOT / "assets/nexoraassets.android"
+ASSET_PROVENANCE = ROOT / "assets/nexoraassets.android.provenance.json"
 
 
 def load_json(relative: str) -> dict:
@@ -20,6 +24,14 @@ def load_json(relative: str) -> dict:
 
 def fail(message: str) -> None:
     raise SystemExit(f"Nexora contract validation failed: {message}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def dependency_versions(items: list[dict], key: str) -> dict[str, str]:
@@ -74,17 +86,42 @@ def main() -> int:
 
     manifest_dependencies = dependency_versions(manifest.get("dependencies", []), "version")
     qpm_dependencies = dependency_versions(qpm.get("dependencies", []), "versionRange")
-    for identifier in ("beatsaber-hook", "custom-types", "custom-json-data", "songcore"):
+    for identifier in (
+        "beatsaber-hook", "custom-types", "custom-json-data", "songcore",
+        "paper2_scotland2",
+    ):
         if manifest_dependencies.get(identifier) != qpm_dependencies.get(identifier):
             fail(f"dependency range mismatch for {identifier}")
+    if qpm.get("info", {}).get("url") != "https://github.com/Liamsitbon/star-trash-tries-":
+        fail("qpm.json points at a repository that does not contain this source")
+    if shared.get("config", {}).get("info", {}).get("url") != qpm["info"]["url"]:
+        fail("qpm.shared.json repository URL disagrees with qpm.json")
+    restored = {
+        item.get("dependency", {}).get("id"): item.get("version")
+        for item in shared.get("restoredDependencies", [])
+    }
+    if restored.get("paper2_scotland2") != "4.8.0":
+        fail("paper2_scotland2 metadata is not restored at the declared 4.8.0 baseline")
+    if restored.get("scotland2") != "0.1.7":
+        fail("Scotland2 metadata is not restored at the declared 0.1.7 baseline")
 
     copies = {item["name"]: item["destination"] for item in manifest.get("fileCopies", [])}
-    expected_asset_path = (
-        "/sdcard/ModData/com.beatgames.beatsaber/Mods/Nexora/Assets/"
-        "nexoraassets.android"
-    )
-    if copies.get("nexoraassets.android") != expected_asset_path:
-        fail("asset bundle install destination disagrees with runtime")
+    expected_copies = {
+        "nexoraassets.android": (
+            "/sdcard/ModData/com.beatgames.beatsaber/Mods/Nexora/Assets/"
+            "nexoraassets.android"
+        ),
+        "nexoraassets.android.provenance.json": (
+            "/sdcard/ModData/com.beatgames.beatsaber/Mods/Nexora/Assets/"
+            "nexoraassets.android.provenance.json"
+        ),
+    }
+    if copies != expected_copies:
+        fail("asset install destinations disagree with the reviewed QMOD payload")
+    if manifest.get("modFiles") != [] or manifest.get("libraryFiles") != []:
+        fail("Nexora must not package an early-load mod or third-party libraries")
+    if manifest.get("lateModFiles") != ["libNexora.so"]:
+        fail("Nexora's Scotland2 late-load payload changed unexpectedly")
 
     forbidden_runtime_markers = (
         "bundleandroid2021.vivify",
@@ -121,6 +158,14 @@ def main() -> int:
         "set_waitforfirstframe(true)",
         "set_sendframereadyevents(true)",
         "onvideoframeready",
+        "add_seekcompleted",
+        "remove_seekcompleted",
+        "if (dome.pendingplay && !dome.seekpending",
+        "playvideo requires loadvideo",
+        "stop() releases decoder resources",
+        "isreadableregularfile",
+        "normalizevideotime",
+        "failvideo(dome)",
         "safetyvisible",
         "s_propvideoready",
         "safety backdrop remains visible",
@@ -150,6 +195,8 @@ def main() -> int:
     for marker in ("ffmpeg", "libavcodec", "exoplayer"):
         if marker in runtime_folded or marker in cmake:
             fail(f"runtime contains an unapproved codec/player stack: {marker}")
+    if "-werror=return-type" not in cmake:
+        fail("native build does not reject missing-return undefined behavior")
 
     for asset_type, field in (
         ("UnityEngine::AssetBundle", "_assetBundle"),
@@ -162,13 +209,13 @@ def main() -> int:
             fail(f"scene-persistent Unity asset is not GC-rooted safely: {field}")
 
     selection_start = runtime.find("GetLevelWasSelectedEvent")
-    selection_end = runtime.find("Nexora runtime ready", selection_start)
+    selection_end = runtime.find("Nexora runtime subscriptions ready", selection_start)
     selection_callback = runtime[selection_start:selection_end]
     requirement_guard = selection_callback.find("if (!requiresNexora)")
-    ordinary_enable = selection_callback.find("EnablePlayButton", requirement_guard)
+    ordinary_enable = selection_callback.find("SetPlayButtonBlocked(false)", requirement_guard)
     asset_retry = selection_callback.find("runtime.LoadAssets();")
     shader_check = selection_callback.find("runtime.HasQuestShaderAssets()", asset_retry)
-    required_enable = selection_callback.find("EnablePlayButton", shader_check)
+    required_enable = selection_callback.find("SetPlayButtonBlocked(false)", shader_check)
     if (
         requirement_guard < 0
         or ordinary_enable < 0
@@ -185,7 +232,14 @@ def main() -> int:
     required_shader_tokens = (
         "STEREO_MULTIVIEW_ON",
         "STEREO_INSTANCING_ON",
+        "UNITY_VERTEX_INPUT_INSTANCE_ID",
+        "UNITY_VERTEX_OUTPUT_STEREO",
+        "UNITY_SETUP_INSTANCE_ID",
+        "UNITY_INITIALIZE_OUTPUT",
+        "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
         "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX",
+        "PackVideoUV",
+        "_Opacity * _Tint.a",
         "ZTest LEqual",
         "_FlipX",
         "_FlipY",
@@ -194,15 +248,18 @@ def main() -> int:
         "_CameraFisheye",
         "_CameraGlitch",
         "_VideoReady",
-        "frameReady callback",
     )
     for token in required_shader_tokens:
         if token not in shader:
             fail(f"Quest shader is missing: {token}")
         if token not in builder and token in {
-            "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON", "ZTest LEqual",
-            "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady",
-            "frameReady callback"
+            "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON",
+            "UNITY_VERTEX_INPUT_INSTANCE_ID", "UNITY_VERTEX_OUTPUT_STEREO",
+            "UNITY_SETUP_INSTANCE_ID", "UNITY_INITIALIZE_OUTPUT",
+            "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
+            "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX", "PackVideoUV",
+            "_Opacity * _Tint.a", "ZTest LEqual",
+            "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady"
         }:
             fail(f"Unity builder does not assert shader contract token: {token}")
     if "NexoraCameraFX" in builder or "NexoraCameraFX" in runtime:
@@ -225,11 +282,46 @@ def main() -> int:
     if pc_artifacts:
         fail(f"PC binary artifacts are present: {pc_artifacts}")
 
+    if not ASSET_BUNDLE.is_file() or ASSET_BUNDLE.stat().st_size < 1024:
+        fail("Android Unity AssetBundle is missing or implausibly small")
+    if not ASSET_PROVENANCE.is_file():
+        fail("Android Unity AssetBundle provenance is missing; rebuild it in Unity")
+    try:
+        provenance = json.loads(ASSET_PROVENANCE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        fail(f"Android Unity AssetBundle provenance is unreadable: {error}")
+    expected_provenance_keys = {
+        "schemaVersion", "unityVersion", "buildTarget", "graphicsApis",
+        "shaderSha256", "shaderMetaSha256", "materialSha256",
+        "materialMetaSha256", "builderSha256", "bundleSha256",
+    }
+    if set(provenance) != expected_provenance_keys:
+        fail("Android Unity AssetBundle provenance schema changed unexpectedly")
+    if provenance.get("schemaVersion") != 1:
+        fail("Android Unity AssetBundle provenance schema is unsupported")
+    if provenance.get("unityVersion") != UNITY_VERSION:
+        fail(f"Android Unity AssetBundle was not built by Unity {UNITY_VERSION}")
+    if provenance.get("buildTarget") != "Android":
+        fail("Unity provenance does not identify an Android AssetBundle")
+    if provenance.get("graphicsApis") != "Vulkan,OpenGLES3":
+        fail("Unity provenance graphics API contract changed unexpectedly")
+    provenance_sources = {
+        "shaderSha256": ROOT / "unity/Assets/Nexora/Shaders/NexoraDome.shader",
+        "shaderMetaSha256": ROOT / "unity/Assets/Nexora/Shaders/NexoraDome.shader.meta",
+        "materialSha256": ROOT / "unity/Assets/Nexora/Materials/NexoraDome.mat",
+        "materialMetaSha256": ROOT / "unity/Assets/Nexora/Materials/NexoraDome.mat.meta",
+        "builderSha256": ROOT / "unity/Assets/Nexora/Editor/BuildNexoraAssets.cs",
+        "bundleSha256": ASSET_BUNDLE,
+    }
+    for field, path in provenance_sources.items():
+        if not path.is_file() or provenance.get(field) != sha256(path):
+            fail(f"Android Unity AssetBundle provenance mismatch: {field}")
+
     print(
         "Nexora Quest contract validation passed: "
         f"{len(known_events)} events, target {TARGET}, scene-safe assets, "
         "Vulkan-safe Unity MaterialOverride video, no-black safety gate, "
-        "no PC framebuffer path/artifacts"
+        "source-matched Unity provenance, no PC framebuffer path/artifacts"
     )
     return 0
 

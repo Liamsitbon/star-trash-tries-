@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - "main"
       - "fix/**"
 
 permissions:
@@ -30,7 +31,9 @@ jobs:
           git diff --exit-code
 
       - name: Validate Nexora source contract
-        run: python3 Nexora/Current-Source/scripts/validate_contract.py
+        run: |
+          python3 Nexora/Current-Source/scripts/validate_contract.py
+          bash Nexora/Current-Source/scripts/test_host.sh
 
       - name: Validate Vivify map and stereo regressions
         run: |

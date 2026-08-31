@@ -1,4 +1,4 @@
-# Nexora 0.3.0 — Beat Saber Quest
+# Nexora 0.3.1 — Beat Saber Quest
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.
@@ -81,15 +81,17 @@ and SBS is 4:1 (two 2:1 eyes side by side).
 ```bash
 qpm restore
 ./scripts/build.sh
+./scripts/test_host.sh
 python3 ./scripts/validate_contract.py
 ./scripts/build_assets.sh
 python3 ./scripts/package_qmod.py
 python3 ./scripts/package_source.py
 ```
 
-Output: `release/Nexora-Quest-0.3.0.qmod`. The package script requires a real
-Android UnityFS shader bundle, AArch64 ELF runtime, correct manifest target and
-clean ZIP without macOS metadata.
+Output: `release/Nexora-Quest-0.3.1.qmod`. The package script requires a real
+Android UnityFS shader bundle, matching Unity-source provenance, AArch64 ELF
+shared object, an exact manifest/payload contract and a clean ZIP without PC or
+macOS payloads.
 
 Target: Beat Saber Quest `1.40.8_7379`, Scotland2, Unity `2021.3.16f1`, Android
 NDK `27.3.13750724+preview-0`.
@@ -103,10 +105,12 @@ exact headset, codec, bitrate, effects and map.
 |---|---|---|
 | Quest 2 | H.264 2048×1024, 30–60 fps | 2880×1440 at 30 fps |
 | Quest Pro | H.264/HEVC 2880×1440, 60 fps | 3840×1920 at 30 fps |
-| Quest 3 / 3S | HEVC 3840×1920, 30–60 fps | 4K 90/120 only as an unproven stress test |
+| Quest 3 / 3S | HEVC 3840×1920, 30–60 fps | Higher decode sizes only after exact-device testing |
 
-4K/120 is an authoring target, not confirmed stable performance. If frames
-drop, reduce camera effects, layer count, fps, bitrate, then resolution.
+Nexora's media helper intentionally has no 90/120-fps preset. Meta's current
+immersive-video guidance targets 48–60 fps and requires per-device codec
+capability checks; Beat Saber also consumes GPU and decoder resources. If
+frames drop, reduce camera effects, layer count, fps, bitrate, then resolution.
 
 ## Validation boundary
 

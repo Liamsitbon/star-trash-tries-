@@ -7,8 +7,8 @@
     "info": {
       "name": "Nexora",
       "id": "nexora",
-      "version": "0.3.0",
-      "url": "https://github.com/liamsitbon/Nexora",
+      "version": "0.3.1",
+      "url": "https://github.com/Liamsitbon/star-trash-tries-",
       "additionalData": {
         "overrideSoName": "libNexora.so",
         "cmake": true
@@ -69,14 +69,14 @@
       },
       {
         "id": "scotland2",
-        "versionRange": "^0.1.6",
+        "versionRange": "^0.1.7",
         "additionalData": {
           "includeQmod": false
         }
       },
       {
         "id": "paper2_scotland2",
-        "versionRange": "^4.6.4",
+        "versionRange": "^4.8.0",
         "additionalData": {}
       }
     ]

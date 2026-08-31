@@ -127,6 +127,7 @@ struct DomeLayer {
   UnityEngine::Video::VideoPlayer* video = nullptr;
   UnityEngine::Video::VideoPlayer_FrameReadyEventHandler* frameReadyDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_EventHandler* prepareCompletedDelegate = nullptr;
+  UnityEngine::Video::VideoPlayer_EventHandler* seekCompletedDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_ErrorEventHandler* errorReceivedDelegate = nullptr;
   DomeVisual visual{};
   Animation<DomeVisual> animation{};
@@ -140,12 +141,16 @@ struct DomeLayer {
   bool safetyVisible = false;
   bool customShader = false;
   bool looping = false;
+  bool pendingInitialTimeTracksSong = false;
+  bool seekPending = false;
   float eventStartSongTime = 0.0f;
   float videoOffset = 0.0f;
   float prepareStartedRealtime = 0.0f;
   float playStartedRealtime = 0.0f;
+  float seekStartedRealtime = 0.0f;
   float lastSyncRealtime = -1000.0f;
   float authoredPlaybackSpeed = 1.0f;
+  std::optional<double> pendingInitialTime;
   std::string media;
 };
 
@@ -158,6 +163,7 @@ public:
   void OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
                          std::int64_t frameIndex);
   void OnVideoPrepared(UnityEngine::Video::VideoPlayer* player);
+  void OnVideoSeekCompleted(UnityEngine::Video::VideoPlayer* player);
   void OnVideoError(UnityEngine::Video::VideoPlayer* player, StringW message);
   void SetPaused(bool paused);
   void SetApplicationPaused(bool paused);
@@ -187,6 +193,7 @@ private:
   void FinishPendingReset();
   void EnsureBehaviour();
   void LoadAssets();
+  void SetPlayButtonBlocked(bool blocked, std::string reason = {});
   std::string QuestShaderAssetFailure() const;
   void InitPropertyIds();
 
@@ -206,6 +213,7 @@ private:
   void AnimateDome(DomeLayer& dome, rapidjson::Value const& json, float eventTime);
   void UpdateDomes(float songTime);
   void UpdateVideo(DomeLayer& dome, float songTime, float realtime);
+  void FailVideo(DomeLayer& dome);
 
   void ApplyCameraJson(CameraVisual& visual, rapidjson::Value const& json);
   void SetCameraEffect(rapidjson::Value const& json, float eventTime, bool animated);
@@ -238,6 +246,8 @@ private:
   bool _applicationPaused = false;
   bool _focused = true;
   bool _pendingReset = false;
+  bool _pendingResetSceneTransition = false;
+  bool _playButtonDisabled = false;
   bool _loggedMissingAssets = false;
   bool _loggedQuestSafeCameraEffects = false;
   bool _propertyIdsInitialized = false;

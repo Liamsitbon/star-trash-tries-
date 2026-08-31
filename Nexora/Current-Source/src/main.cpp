@@ -2,7 +2,8 @@
 #include "NexoraRuntime.hpp"
 
 #include <algorithm>
-#include <array>
+#include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -27,7 +28,6 @@ constexpr std::string_view kNexoraLogPath = "/sdcard/ModData/com.beatgames.beats
 std::ofstream gNexoraLogFile;
 std::mutex gNexoraLogMutex;
 bool gNexoraLogSinkInstalled = false;
-std::size_t gNexoraLogLinesSinceFlush = 0;
 
 void EnsureObject() {
   auto& document = getConfig().config;
@@ -75,10 +75,13 @@ bool EnsureFloat(char const* key, float defaultValue, float minimum, float maxim
   auto& document = getConfig().config;
   auto iterator = document.FindMember(key);
   if (iterator != document.MemberEnd() && iterator->value.IsNumber()) {
-    target = std::clamp(iterator->value.GetFloat(), minimum, maximum);
-    if (target == iterator->value.GetFloat()) return false;
-    iterator->value.SetFloat(target);
-    return true;
+    float const configured = iterator->value.GetFloat();
+    if (std::isfinite(configured)) {
+      target = std::clamp(configured, minimum, maximum);
+      if (target == configured) return false;
+      iterator->value.SetFloat(target);
+      return true;
+    }
   }
   target = defaultValue;
   if (iterator == document.MemberEnd()) {
@@ -152,17 +155,43 @@ void EnsureConfigDefaults() {
 }
 
 MOD_EXTERN_FUNC void setup(CModInfo* info) noexcept {
-  *info = modInfo.to_c();
-  getConfig().Load();
-  EnsureConfigDefaults();
-  InstallNexoraFileLogSink();
-  PaperLogger.info(
-      "Nexora {} setup: enabled={} fileLogging={} debugLogging={} maxLayers={} cameraEffects={} syncTolerance={} domeRes={}",
-      VERSION, gEnabled, gFileLogging, gDebugLogging, gMaxLayers, gCameraEffects, gSyncTolerance, gDomeResolution);
+  try {
+    if (info != nullptr) *info = modInfo.to_c();
+    getConfig().Load();
+    EnsureConfigDefaults();
+    InstallNexoraFileLogSink();
+    PaperLogger.info(
+        "Nexora {} setup: enabled={} fileLogging={} debugLogging={} maxLayers={} cameraEffects={} syncTolerance={} domeRes={}",
+        VERSION, gEnabled, gFileLogging, gDebugLogging, gMaxLayers,
+        gCameraEffects, gSyncTolerance, gDomeResolution);
+  } catch (std::exception const& exception) {
+    try {
+      PaperLogger.error("Nexora setup failed safely: {}", exception.what());
+    } catch (...) {
+    }
+  } catch (...) {
+    try {
+      PaperLogger.error("Nexora setup failed safely with a non-standard exception");
+    } catch (...) {
+    }
+  }
 }
 
 MOD_EXTERN_FUNC void late_load() noexcept {
-  il2cpp_functions::Init();
-  custom_types::Register::AutoRegister();
-  Nexora::LateLoad();
+  try {
+    il2cpp_functions::Init();
+    custom_types::Register::AutoRegister();
+    Nexora::LateLoad();
+  } catch (std::exception const& exception) {
+    try {
+      PaperLogger.error("Nexora late_load failed safely: {}", exception.what());
+    } catch (...) {
+    }
+  } catch (...) {
+    try {
+      PaperLogger.error(
+          "Nexora late_load failed safely with a non-standard exception");
+    } catch (...) {
+    }
+  }
 }
