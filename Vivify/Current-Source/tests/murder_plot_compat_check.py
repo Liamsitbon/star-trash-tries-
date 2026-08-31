@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import Counter
 import json
 import sys
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -14,11 +15,29 @@ def fail(msg: str) -> None:
 
 
 def main() -> int:
-    maps = list((ROOT / "diagnostics/2026-08-13-murder-plot-42-flux-source-audit/online/45d7f").rglob("ExpertPlusLawless.dat"))
-    if not maps:
-        fail("Murder Plot ExpertPlusLawless.dat not found")
-
-    data = json.loads(maps[0].read_text(encoding="utf-8"))
+    fixture_root = ROOT / "diagnostics/2026-08-13-murder-plot-42-flux-source-audit/online"
+    maps = list((fixture_root / "45d7f").rglob("ExpertPlusLawless.dat"))
+    if maps:
+        data = json.loads(maps[0].read_text(encoding="utf-8"))
+    else:
+        # The repo keeps large map fixtures as ZIPs.  Local audit sessions may
+        # have extracted 45d7f/, but CI checkouts intentionally do not.
+        archive_path = fixture_root / "45d7f.zip"
+        if not archive_path.is_file():
+            fail("Murder Plot ExpertPlusLawless.dat or 45d7f.zip not found")
+        try:
+            with zipfile.ZipFile(archive_path) as archive:
+                entry = next(
+                    (name for name in archive.namelist()
+                     if Path(name).name == "ExpertPlusLawless.dat" and not name.endswith("/")),
+                    None,
+                )
+                if entry is None:
+                    fail("45d7f.zip does not contain ExpertPlusLawless.dat")
+                with archive.open(entry) as stream:
+                    data = json.load(stream)
+        except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as error:
+            fail(f"Murder Plot fixture ZIP is unreadable: {error}")
     custom = data.get("customData", {})
     real = data.get("colorNotes", [])
     fakes = custom.get("fakeColorNotes", [])
