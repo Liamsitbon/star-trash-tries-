@@ -51,6 +51,9 @@ jobs:
           python3 NE-Fixed/Current-Source/tests/murder_plot_compat_check.py
           python3 NE-Fixed/Current-Source/tests/additional_audit_1_8_8.py
 
+      - name: Validate AudioLink helper scripts
+        run: pwsh -NoProfile -File BSAudioLink-Quest-master/scripts/copy.ps1 -help
+
       - name: Validate shared interop contract
         run: python3 tests/interop_contract_check.py
 
@@ -99,8 +102,8 @@ jobs:
           - name: AudioLink
             project: BSAudioLink-Quest-master
             build: pwsh -NoProfile -File scripts/build.ps1 -clean -release
-            package: echo "AudioLink compile-only CI"
-            check: test -f build/libbs-audiolink.so
+            package: qpm qmod manifest && qpm qmod zip
+            check: test -f build/libbs-audiolink.so && test -f mod.json && test -f bs-audiolink.qmod
 
     name: Build and validate ${{ matrix.name }}
     steps:
