@@ -3,16 +3,18 @@
 #include "UnityEngine/Shader.hpp"
 #include "config.hpp"
 
-
-
 namespace ShaderProperties {
     struct ShaderPropID {
         template<size_t sz>
-        constexpr ShaderPropID(const char (&str)[sz]) : str(str), sz(sz) {}
+        constexpr ShaderPropID(const char (&str)[sz]) : str(str), sz(sz - 1) {}
 
         operator int () const {
             if (id == -1) {
-                id = UnityEngine::Shader::PropertyToID(std::string_view(str, sz)); 
+                // The size of a string literal includes its trailing NUL. StringW
+                // preserves std::string_view's exact length, so passing `sz` would
+                // create a managed string with an embedded trailing NUL and can
+                // hash to a different shader property ID.
+                id = UnityEngine::Shader::PropertyToID(std::string_view(str, sz));
                 AudioLinkLogger.info("Shader Prop '{}': {}", str, id);
             }
             return id;
