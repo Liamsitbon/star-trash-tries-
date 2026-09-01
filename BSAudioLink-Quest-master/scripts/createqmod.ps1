@@ -1,104 +1,52 @@
-Param(
-    [String]$qmodname="",
+#!/usr/bin/env pwsh
+
+param(
     [Parameter(Mandatory=$false)]
-    [Switch]$clean
+    [String] $qmodName = "AudioLink",
+
+    [Parameter(Mandatory=$false)]
+    [Switch] $clean
 )
 
-if ($qmodName -eq "")
-{
-    echo "Give a proper qmod name and try again"
-    exit
-}
-$mod = "./mod.json"
-$modJson = Get-Content $mod -Raw | ConvertFrom-Json
+$ErrorActionPreference = "Stop"
+$defaultQmod = "AudioLink.qmod"
+$requestedQmod = "$qmodName.qmod"
 
-$filelist = @($mod)
-
-$cover = "./" + $modJson.coverImage
-$fileList = @($mod)
-
-if ((-not ($cover -eq "./")) -and (Test-Path $cover))
-{
-    $fileList += ,$cover
+if ([string]::IsNullOrWhiteSpace($qmodName)) {
+    Write-Error "qmodName cannot be empty."
+    exit 1
 }
 
-foreach ($mod in $modJson.modFiles)
-{
-    $path = "./build/" + $mod
-    if (-not (Test-Path $path))
-    {
-        $path = "./extern/libs/" + $mod
+if ($clean) {
+    Remove-Item "./mod.json" -Force -ErrorAction SilentlyContinue
+    Remove-Item "./$defaultQmod" -Force -ErrorAction SilentlyContinue
+    if ($requestedQmod -ne $defaultQmod) {
+        Remove-Item "./$requestedQmod" -Force -ErrorAction SilentlyContinue
     }
-    $filelist += $path
 }
 
-foreach ($lib in $modJson.libraryFiles)
-{
-    $path = "./build/" + $lib
-    if (-not (Test-Path $path))
-    {
-        $path = "./extern/libs/" + $lib
-    }
-    $filelist += $path
+# Let QPM build the manifest from qpm.shared.json + mod.template.json and then
+# construct a fresh archive. This avoids Compress-Archive -Update retaining stale
+# files from an older QMOD.
+& qpm qmod manifest
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "qpm qmod manifest failed."
+    exit $LASTEXITCODE
 }
 
-if (Test-Path "./ExtraFiles")
-{
-    $extraFiles = @()
-    $extraEntries = Get-ChildItem ./ExtraFiles/* -Recurse
-
-    foreach ($entry in $extraEntries)
-    {
-        $mode = $entry | Select -Expand Mode
-        if ($mode.Contains("d"))
-        {
-            continue
-        }
-
-        # if not a dir
-        if (-not $entry.Directory.Name.Contains("ExtraFiles"))
-        {
-            $dir = $entry.Directory
-            $folderPath = $dir.Name + "/" + $entry.Name
-            while (($dir.Directory) -and (-not $dir.Directory.Name.Contains("ExtraFiles")))
-            {
-                $folderPath = $dir.Directory.Name + "/" + $folderPath
-            }
-
-            if ($folderPath.Contains("Icons")) 
-            {
-                continue;
-            }
-            $extraFiles += ,$folderPath
-        }
-        else
-        {
-            $extraFiles += ,$entry.Name
-        }
-    }
-
-    foreach ($file in $extraFiles)
-    {
-        $path = "./ExtraFiles/" + $file
-        $filelist += ,$path
-    } 
-}
-else
-{
-    echo "No ExtraFiles Directory Found"
+& qpm qmod zip
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "qpm qmod zip failed."
+    exit $LASTEXITCODE
 }
 
-$zip = $qmodName + ".zip"
-$qmod = $qmodName + ".qmod"
-
-if ($clean.IsPresent) {
-    echo "Making Clean Qmod"
+if (-not (Test-Path "./$defaultQmod")) {
+    Write-Error "QPM did not create $defaultQmod."
+    exit 1
 }
 
-if ((-not ($clean.IsPresent)) -and (Test-Path $qmod))
-{
-    Move-Item $qmod $zip -Force
+if ($requestedQmod -ne $defaultQmod) {
+    Move-Item "./$defaultQmod" "./$requestedQmod" -Force
 }
 
-Compress-Archive -Path $filelist -DestinationPath $zip -Update
-Move-Item $zip $qmod -Force
+Write-Output "Created $requestedQmod"
