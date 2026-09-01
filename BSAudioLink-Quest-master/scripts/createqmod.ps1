@@ -2,14 +2,14 @@
 
 param(
     [Parameter(Mandatory=$false)]
-    [String] $qmodName = "AudioLink",
+    [String] $qmodName = "bs-audiolink",
 
     [Parameter(Mandatory=$false)]
     [Switch] $clean
 )
 
 $ErrorActionPreference = "Stop"
-$defaultQmod = "AudioLink.qmod"
+$defaultQmod = "bs-audiolink.qmod"
 $requestedQmod = "$qmodName.qmod"
 
 if ([string]::IsNullOrWhiteSpace($qmodName)) {
