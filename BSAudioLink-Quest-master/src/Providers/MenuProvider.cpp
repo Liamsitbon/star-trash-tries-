@@ -23,17 +23,63 @@ namespace AudioLink {
     }
 
     void MenuProvider::dtor() {
-        // Finalize();
-        instance = nullptr;
+        if (instance == this) instance = nullptr;
     }
 
-    void MenuProvider::SongPreviewPlayerProvide(int activeChannel, ArrayW<GlobalNamespace::SongPreviewPlayer::AudioSourceVolumeController*> audioSourceControllers) {
+    void MenuProvider::SongPreviewPlayerProvide(
+        int activeChannel,
+        ArrayW<GlobalNamespace::SongPreviewPlayer::AudioSourceVolumeController*> audioSourceControllers) {
+
+        if (!_audioLink) {
+            AudioLinkLogger.info("Skipping menu audio source: AudioLinkObj is not available.");
+            return;
+        }
+
+        const auto controllerCount = static_cast<int>(audioSourceControllers.size());
+        if (activeChannel < 0 || activeChannel >= controllerCount) {
+            AudioLinkLogger.info(
+                "Skipping menu audio source: active channel {} is outside controller count {}.",
+                activeChannel,
+                controllerCount);
+            return;
+        }
+
         auto controller = audioSourceControllers[activeChannel];
-        _audioLink->SetAudioSource(controller->audioSource);
+        if (!controller) {
+            AudioLinkLogger.info("Skipping menu audio source: active controller is null.");
+            return;
+        }
+
+        auto audioSource = controller->audioSource;
+        if (!audioSource || !audioSource->m_CachedPtr.m_value) {
+            AudioLinkLogger.info("Skipping menu audio source: active AudioSource is not alive yet.");
+            return;
+        }
+
+        _audioLink->SetAudioSource(audioSource);
     }
 
     void MenuProvider::ColorManagerInstallerProvide(GlobalNamespace::ColorSchemeSO* menuColorScheme) {
-        auto overrideColorScheme = _playerDataModel->playerData->colorSchemesSettings->GetOverrideColorScheme();
-        _audioLink->SetColorScheme(overrideColorScheme ? overrideColorScheme : menuColorScheme->get_colorScheme());
+        if (!_audioLink || !_playerDataModel || !menuColorScheme) {
+            AudioLinkLogger.info("Skipping menu color scheme: menu dependencies are not ready.");
+            return;
+        }
+
+        auto playerData = _playerDataModel->playerData;
+        if (!playerData || !playerData->colorSchemesSettings) {
+            AudioLinkLogger.info("Skipping menu color scheme: PlayerData color settings are not ready.");
+            return;
+        }
+
+        auto overrideColorScheme = playerData->colorSchemesSettings->GetOverrideColorScheme();
+        auto fallbackColorScheme = menuColorScheme->get_colorScheme();
+        auto colorScheme = overrideColorScheme ? overrideColorScheme : fallbackColorScheme;
+
+        if (!colorScheme) {
+            AudioLinkLogger.info("Skipping menu color scheme: no valid ColorScheme was available.");
+            return;
+        }
+
+        _audioLink->SetColorScheme(colorScheme);
     }
 }

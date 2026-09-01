@@ -17,7 +17,23 @@ namespace AudioLink {
 
     void GameProvider::Initialize() {
         AudioLinkLogger.info("GameProvider Initialize");
-        _audioLink->SetAudioSource(_audioTimeSyncController->_audioSource);
-        _audioLink->SetColorScheme(_colorScheme);
+
+        if (!_audioLink || !_audioTimeSyncController) {
+            AudioLinkLogger.info("Skipping gameplay AudioLink binding: dependencies are not ready.");
+            return;
+        }
+
+        auto audioSource = _audioTimeSyncController->_audioSource;
+        if (audioSource && audioSource->m_CachedPtr.m_value) {
+            _audioLink->SetAudioSource(audioSource);
+        } else {
+            AudioLinkLogger.info("Skipping gameplay audio source: AudioSource is not alive yet.");
+        }
+
+        if (_colorScheme) {
+            _audioLink->SetColorScheme(_colorScheme);
+        } else {
+            AudioLinkLogger.info("Skipping gameplay color scheme: ColorScheme is null.");
+        }
     }
 }

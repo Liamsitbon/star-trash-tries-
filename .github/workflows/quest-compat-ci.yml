@@ -96,6 +96,11 @@ jobs:
             build: bash scripts/build.sh --release --clean
             package: bash scripts/buildQMOD.sh
             check: bash scripts/validateProject.sh
+          - name: AudioLink
+            project: BSAudioLink-Quest-master
+            build: pwsh -NoProfile -File scripts/build.ps1 -clean -release
+            package: echo "AudioLink compile-only CI"
+            check: test -f build/libbs-audiolink.so
 
     name: Build and validate ${{ matrix.name }}
     steps:
