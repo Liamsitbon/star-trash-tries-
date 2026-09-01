@@ -103,7 +103,7 @@ jobs:
             project: BSAudioLink-Quest-master
             build: pwsh -NoProfile -File scripts/build.ps1 -clean -release
             package: qpm qmod manifest && qpm qmod zip
-            check: test -f build/libbs-audiolink.so && test -f mod.json && test -f AudioLink.qmod
+            check: test -f build/libbs-audiolink.so && test -f mod.json && test -f bs-audiolink.qmod
 
     name: Build and validate ${{ matrix.name }}
     steps:
