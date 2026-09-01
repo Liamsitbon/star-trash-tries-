@@ -34,22 +34,37 @@
 MAKE_HOOK_MATCH(SongPreviewPlayer_CrossFadeTo, static_cast<void (GlobalNamespace::SongPreviewPlayer::*)(::UnityEngine::AudioClip*, float, float, float, bool, ::System::Action*)>(&GlobalNamespace::SongPreviewPlayer::CrossfadeTo), void, GlobalNamespace::SongPreviewPlayer* self, ::UnityEngine::AudioClip* audioClip, float musicVolume, float startTime, float duration, bool isDefault, ::System::Action* onFadeOutCallback) {
     AudioLinkLogger.info("SongPreviewPlayer_CrossFadeTo");
     SongPreviewPlayer_CrossFadeTo(self, audioClip, musicVolume, startTime, duration, isDefault, onFadeOutCallback);
+
+    // During the transition from the Continue screen into the menu, Beat Saber
+    // can invoke preview-player code while menu objects are still being created.
+    // Never touch fields on a missing/destroyed SongPreviewPlayer.
+    if (!self || !self->m_CachedPtr.m_value) {
+        AudioLinkLogger.info("Skipping AudioLink menu audio update: SongPreviewPlayer is not alive.");
+        return;
+    }
+
     auto menuProvider = AudioLink::MenuProvider::get_instance();
     if (menuProvider) {
         menuProvider->SongPreviewPlayerProvide(self->_activeChannel, self->_audioSourceControllers);
     } else {
-        AudioLinkLogger.info("No menu provider exists!");
+        AudioLinkLogger.info("No menu provider exists yet; skipping AudioLink menu audio update.");
     }
 }
 
 MAKE_HOOK_MATCH(ColorManagerInstaller_InstallBindings, &GlobalNamespace::ColorManagerInstaller::InstallBindings, void, GlobalNamespace::ColorManagerInstaller* self) {
     AudioLinkLogger.info("ColorManagerInstaller_InstallBindings");
     ColorManagerInstaller_InstallBindings(self);
+
+    if (!self || !self->m_CachedPtr.m_value) {
+        AudioLinkLogger.info("Skipping AudioLink menu color update: ColorManagerInstaller is not alive.");
+        return;
+    }
+
     auto menuProvider = AudioLink::MenuProvider::get_instance();
     if (menuProvider) {
         menuProvider->ColorManagerInstallerProvide(self->_menuColorScheme);
     } else {
-        AudioLinkLogger.info("No menu provider exists!");
+        AudioLinkLogger.info("No menu provider exists yet; skipping AudioLink menu color update.");
     }
 }
 
