@@ -38,8 +38,10 @@ namespace {
     static constexpr double kSecondsPerDay = 86400.0;
     static constexpr int kNetworkTimeLowMask = 0xFFFF;
 
-    template<typename T>
-    inline bool IsUnityObjectAlive(T* object) {
+    // Works for both raw Unity pointers and UnityW<T> wrappers. Both expose
+    // pointer-like bool/operator-> semantics in beatsaber-hook.
+    template<typename TObject>
+    inline bool IsUnityObjectAlive(const TObject& object) {
         return object && object->m_CachedPtr.m_value;
     }
 
