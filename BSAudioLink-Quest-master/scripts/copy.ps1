@@ -1,83 +1,95 @@
 #!/usr/bin/env pwsh
 
 param(
-    [Parameter(ValueFromRemainingArguments=$true)]
-    [string[]]$args,
+    [Parameter(Mandatory=$false)]
+    [Switch] $clean,
 
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory=$false)]
+    [Switch] $release,
+
+    [Parameter(Mandatory=$false)]
     [Switch] $log,
 
     [Parameter(Mandatory=$false)]
     [Switch] $useDebug,
 
     [Parameter(Mandatory=$false)]
-    [Switch] $self,
-
-    [Parameter(Mandatory=$false)]
-    [Switch] $all,
-
-    [Parameter(Mandatory=$false)]
-    [String] $custom="",
-
-    [Parameter(Mandatory=$false)]
-    [String] $file="",
-
-    [Parameter(Mandatory=$false)]
     [Switch] $help
 )
 
-if ($help -eq $true) {
-    Write-Output "`"Copy`" - Builds and copies your mod to your quest, and also starts Beat Saber with optional logging"
+$ErrorActionPreference = "Stop"
+$packageId = "com.beatgames.beatsaber"
+
+if ($help) {
+    Write-Output '"Copy" - builds AudioLink, pushes it to the Quest, and restarts Beat Saber.'
     Write-Output "`n-- Arguments --`n"
-
-    Write-Output "-Clean `t`t Performs a clean build (equvilant to running `"build -clean`")"
-    Write-Output "-UseDebug `t Copies the debug version of the mod to your quest"
-    Write-Output "-Log `t`t Logs Beat Saber using the `"Start-Logging`" command"
-
-    Write-Output "`n-- Logging Arguments --`n"
-
-    & $PSScriptRoot/start-logging.ps1 -help -excludeHeader
-
-    exit
+    Write-Output "-Clean       Performs a clean build"
+    Write-Output "-Release     Builds RelWithDebInfo instead of Debug"
+    Write-Output "-UseDebug    Pushes build/debug/<library> instead of the stripped build"
+    Write-Output "-Log         Clears logcat before launch and streams logcat afterwards"
+    exit 0
 }
 
-& $PSScriptRoot/build.ps1 -clean:$clean
-
+& $PSScriptRoot/build.ps1 -clean:$clean -release:$release
 if ($LASTEXITCODE -ne 0) {
-    Write-Output "Failed to build, exiting..."
+    Write-Error "AudioLink build failed."
     exit $LASTEXITCODE
 }
 
-& $PSScriptRoot/validate-modjson.ps1
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+# Generate mod.json from qpm.json/qpm.shared.json + mod.template.json. The old
+# script called validate-modjson.ps1, but that file is not part of this source tree.
+& qpm qmod manifest
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path "./mod.json")) {
+    Write-Error "Could not generate mod.json with qpm."
+    exit 1
 }
+
 $modJson = Get-Content "./mod.json" -Raw | ConvertFrom-Json
 
-$modFiles = $modJson.modFiles
+function Push-ModFiles($files, [string]$destination, [bool]$debugBuild) {
+    if ($null -eq $files) { return }
 
-foreach ($fileName in $modFiles) {
-    if ($useDebug -eq $true) {
-        & adb push build/debug/$fileName /sdcard/ModData/com.beatgames.beatsaber/Modloader/early_mods/$fileName
-    } else {
-        & adb push build/$fileName /sdcard/ModData/com.beatgames.beatsaber/Modloader/early_mods/$fileName
+    foreach ($fileName in @($files)) {
+        if ([string]::IsNullOrWhiteSpace($fileName)) { continue }
+
+        $source = if ($debugBuild) {
+            Join-Path "build/debug" $fileName
+        } else {
+            Join-Path "build" $fileName
+        }
+
+        if (-not (Test-Path $source)) {
+            throw "Expected mod file was not built: $source"
+        }
+
+        & adb push $source "$destination/$fileName"
+        if ($LASTEXITCODE -ne 0) {
+            throw "adb push failed for $source"
+        }
     }
 }
 
-$lateModFiles = $modJson.lateModFiles
+Push-ModFiles $modJson.modFiles "/sdcard/ModData/$packageId/Modloader/early_mods" $useDebug.IsPresent
+Push-ModFiles $modJson.lateModFiles "/sdcard/ModData/$packageId/Modloader/mods" $useDebug.IsPresent
 
-foreach ($fileName in $lateModFiles) {
-    if ($useDebug -eq $true) {
-        & adb push build/debug/$fileName /sdcard/ModData/com.beatgames.beatsaber/Modloader/mods/$fileName
-    } else {
-        & adb push build/$fileName /sdcard/ModData/com.beatgames.beatsaber/Modloader/mods/$fileName
-    }
-}
-
-
-& $PSScriptRoot/restart-game.ps1
-
-if ($log -eq $true) {
+if ($log) {
     & adb logcat -c
-    & $PSScriptRoot/start-logging.ps1 -self:$self -all:$all -custom:$custom -file:$file
+}
+
+# The old script referenced restart-game.ps1/start-logging.ps1, neither of which
+# exists in this AudioLink source tree. Restart Beat Saber directly instead.
+& adb shell am force-stop $packageId
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to stop Beat Saber through adb."
+    exit $LASTEXITCODE
+}
+
+& adb shell monkey -p $packageId -c android.intent.category.LAUNCHER 1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to launch Beat Saber through adb."
+    exit $LASTEXITCODE
+}
+
+if ($log) {
+    & adb logcat
 }
