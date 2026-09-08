@@ -1,5 +1,8 @@
 {
   "dependencies": {
+    "com.unity.xr.management": "4.5.2",
+    "com.unity.xr.oculus": "3.4.1",
+    "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.assetbundle": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
     "com.unity.modules.video": "1.0.0"

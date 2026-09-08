@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-expected_version="0.6.10"
+expected_version="0.6.13"
 expected_qpm_config_version="0.4.0"
 
 if [[ "${VIVIFY_SKIP_HOST_TESTS:-0}" == "1" ]]; then
@@ -131,7 +131,7 @@ if ! rg -q -F 'QueueStereoMaterialBlit' "$per_eye_blit_source" ||
    ! rg -q -F 'Blit_Identifier' "$per_eye_blit_source" ||
    ! rg -q -F 'scale, offset, 0, 0' "$per_eye_blit_source" ||
    ! rg -q -F 'scale, offset, 1, 1' "$per_eye_blit_source"; then
-  printf '%s\n' 'FAIL ordinary Quest material blits are missing the explicit depth-slice path' >&2
+  printf '%s\n' 'FAIL explicitly opted-in Quest materials are missing the depth-slice path' >&2
   exit 1
 fi
 if rg -q 'EnableKeyword\(u"VIVIFY_PER_EYE_MULTIPASS"' "$per_eye_blit_source"; then
@@ -140,7 +140,8 @@ if rg -q 'EnableKeyword\(u"VIVIFY_PER_EYE_MULTIPASS"' "$per_eye_blit_source"; th
 fi
 rg -q -F 'MULTIPASS_ENABLED is valid only for Unity' "$project_dir/src/VivifyAssets.cpp"
 rg -q -F 'SetMaterialKeyword(material, u"VIVIFY_PER_EYE_MULTIPASS", false)' "$project_dir/src/VivifyAssets.cpp"
-printf '%s\n' 'PASS ordinary multiview material blits use explicit Quest depth slices; multiview-only keyword is disabled'
+rg -q -F '!material->HasProperty(perEyeProperty) || material->GetFloat(perEyeProperty) <= 0.5f' "$per_eye_blit_source"
+printf '%s\n' 'PASS native multiview is the default; explicit per-eye materials retain their opt-in path'
 
 pause_body="$(sed -n '/^void Runtime::SetPauseMenuActive(bool active)/,/^void Runtime::HandleScenesWillDismiss()/p' "$project_dir/src/VivifyCore.cpp")"
 if grep -q -E 'RestoreRenderSettings\(|ReapplyCurrentRenderSettings\(' <<<"$pause_body"; then
@@ -191,7 +192,7 @@ for required_prefab_pattern in \
   fi
 done
 cache_body="$(sed -n '/^void Runtime::CacheReplacementRenderers(/,/^void Runtime::InstantiateReplacementPrefab(/p' "$prefab_source")"
-if ! grep -q -F 'ForceRendererOnTop(renderer)' <<<"$cache_body"; then
+if ! grep -q -F 'ForceGameObjectRenderersOnTop' <<<"$cache_body"; then
   printf '%s\n' 'FAIL replacement renderers are not protected from foreground occlusion' >&2
   exit 1
 fi

@@ -10,6 +10,8 @@ inline std::vector<std::string> getMaterialBehaviourValues() {
 }
 
 DECLARE_CONFIG(NEConfig) {
+  CONFIG_VALUE(defaultNotesForNoteEffects, bool, "Use default notes for note effects", true,
+              "Temporarily bypasses cosmetic note models when the current difficulty animates note geometry or visibility; keeps custom sabers and saved selections");
   CONFIG_VALUE(enableNoteDissolve, bool, "Enable note dissolve", true);
   CONFIG_VALUE(enableMirrorNoteDissolve, bool, "Enable mirror note dissolve", true,
               "If enabled, allows note mirrors to dissolve. When disabled, hides the notes if dissolved");

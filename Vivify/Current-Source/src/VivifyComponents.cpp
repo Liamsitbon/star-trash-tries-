@@ -275,6 +275,20 @@ void CullingCameraController::CullingPreCull() {
     }
   }
 
+  // Track-owned gameplay objects are frequently pooled or destroyed. Keep the
+  // renderer cache bounded without turning pruning into another per-frame
+  // traversal; entries seen in this culling pass are always retained.
+  if (frame >= _nextRendererCachePruneFrame) {
+    _nextRendererCachePruneFrame = frame + 300;
+    for (auto it = _rendererCache.begin(); it != _rendererCache.end();) {
+      if (!IsManagedAlive(it->first) || !_seenTrackedRoots.contains(it->first)) {
+        it = _rendererCache.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   if (_diagLogCount < 3 && diagnostics) {
     _diagLogCount++;
     auto go = get_gameObject();
@@ -579,8 +593,10 @@ void CameraApplier::OnRenderImage(UnityEngine::RenderTexture* src, UnityEngine::
           ? imageEffectController->__cordl_internal_get__renderImageCallback()
           : nullptr;
   if (mainEffectCallback != nullptr) {
+    bool const hasPreEffects = !runtime.GetPreEffectsEmpty();
+    bool const hasPostEffects = !runtime.GetPostEffectsEmpty();
     if (runtime.IsResetting() || GetDisableAllBlits() ||
-        (runtime.GetPreEffectsEmpty() && runtime.GetPostEffectsEmpty())) {
+        (!hasPreEffects && !hasPostEffects)) {
       mainEffectCallback->Invoke(src, dest);
       return;
     }
@@ -588,16 +604,39 @@ void CameraApplier::OnRenderImage(UnityEngine::RenderTexture* src, UnityEngine::
     desc.set_msaaSamples(1);
     desc.set_depthBufferBits(0);
     auto temp = UnityEngine::RenderTexture::GetTemporary(desc);
-    auto temp2 = UnityEngine::RenderTexture::GetTemporary(desc);
-
     bool const tempValid = IsManagedAlive(temp.unsafePtr());
-    bool const temp2Valid = IsManagedAlive(temp2.unsafePtr());
+    if (!tempValid) {
+      mainEffectCallback->Invoke(src, dest);
+      // Allocation failure means the device is already under pressure. Keep
+      // the valid Beat Saber frame and skip optional authored effects rather
+      // than attempting an undefined self-blit.
+      return;
+    }
 
-    if (tempValid && temp2Valid) {
+    if (hasPreEffects && !hasPostEffects) {
+      // One temporary is enough: pre effects -> Beat Saber main effect -> eye.
+      runtime.ApplyBlits(src, temp.unsafePtr(), cameraName, 1);
+      mainEffectCallback->Invoke(temp.unsafePtr(), dest);
+      UnityEngine::RenderTexture::ReleaseTemporary(temp.unsafePtr());
+      return;
+    }
+    if (!hasPreEffects && hasPostEffects) {
+      // One temporary is enough: Beat Saber main effect -> post effects -> eye.
+      mainEffectCallback->Invoke(src, temp.unsafePtr());
+      runtime.ApplyBlits(temp.unsafePtr(), dest, cameraName, 2);
+      UnityEngine::RenderTexture::ReleaseTemporary(temp.unsafePtr());
+      return;
+    }
+
+    // Both sides of the main effect are authored, so two non-aliasing targets
+    // are required. This is the only path that pays for the second allocation.
+    auto temp2 = UnityEngine::RenderTexture::GetTemporary(desc);
+    bool const temp2Valid = IsManagedAlive(temp2.unsafePtr());
+    if (temp2Valid) {
       runtime.ApplyBlits(src, temp.unsafePtr(), cameraName, 1);
       mainEffectCallback->Invoke(temp.unsafePtr(), temp2.unsafePtr());
       runtime.ApplyBlits(temp2.unsafePtr(), dest, cameraName, 2);
-    } else if (tempValid) {
+    } else {
       runtime.ApplyBlits(src, temp.unsafePtr(), cameraName, 1);
       mainEffectCallback->Invoke(temp.unsafePtr(), dest);
       // Reuse the pre-effect temporary only after the main effect finished.
@@ -608,19 +647,9 @@ void CameraApplier::OnRenderImage(UnityEngine::RenderTexture* src, UnityEngine::
       if (!runtime.CopyStereoRenderTexture(temp.unsafePtr(), dest)) {
         UnityEngine::Graphics::Blit(temp.unsafePtr(), dest);
       }
-    } else {
-      mainEffectCallback->Invoke(src, dest);
-      // Allocation failure means the device is already under pressure. Keep
-      // the valid Beat Saber frame and skip optional post effects rather than
-      // attempting an undefined self-blit.
     }
-
-    if (tempValid) {
-      UnityEngine::RenderTexture::ReleaseTemporary(temp.unsafePtr());
-    }
-    if (temp2Valid) {
-      UnityEngine::RenderTexture::ReleaseTemporary(temp2.unsafePtr());
-    }
+    UnityEngine::RenderTexture::ReleaseTemporary(temp.unsafePtr());
+    if (temp2Valid) UnityEngine::RenderTexture::ReleaseTemporary(temp2.unsafePtr());
     return;
   }
   runtime.ApplyBlits(src, dest, cameraName, 0);

@@ -439,8 +439,12 @@ private:
   int _nextBeatmapPrepareProbeFrame = 0;
   // HUD AlwaysVisibleQuad instances can be spawned after PrepareBeatmap (for
   // example when 42-flux rebuilds its score/X1 masks).  Re-scan at a bounded
-  // cadence so late instances do not leak through the Quest camera.
+  // cadence so late instances do not leak through the Quest camera. OnEnable
+  // owns the normal fast path; this scan becomes a low-frequency safety net
+  // after the first few seconds of gameplay.
   int _nextAlwaysVisibleQuadScanFrame = 0;
+  int _alwaysVisibleQuadSafetyScanCount = 0;
+  int _nextSyncedObjectPurgeFrame = 0;
   float _lastSongTime = -1.0f;
   float _lastSyncSongTime = -1.0f;
   float _lastAppliedSyncSpeed = std::numeric_limits<float>::quiet_NaN();

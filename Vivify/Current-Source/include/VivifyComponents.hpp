@@ -84,6 +84,7 @@ public:
     _seenRendererGameObjects.clear();
     _diagLogCount = 0;
     _stallLogCount = 0;
+    _nextRendererCachePruneFrame = 0;
   }
 
   void ClearCullingData() {
@@ -96,6 +97,7 @@ public:
     _seenTrackedRoots.clear();
     _seenRendererGameObjects.clear();
     _hasCullingData = false;
+    _nextRendererCachePruneFrame = 0;
   }
 
   bool HasCullingData() const { return _hasCullingData; }
@@ -119,6 +121,7 @@ private:
   bool _hasCullingData = false;
   int _diagLogCount = 0;
   int _stallLogCount = 0;
+  int _nextRendererCachePruneFrame = 0;
 };
 
 DECLARE_CLASS_CODEGEN(Vivify, MultipassKeywordController, UnityEngine::MonoBehaviour) {

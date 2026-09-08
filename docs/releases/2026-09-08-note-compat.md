@@ -1,0 +1,13 @@
+# Quest note compatibility release candidate
+
+Target: Beat Saber Quest standalone **1.40.8_7379**.
+
+- **Noodle Extensions 1.8.15:** selects the game's default note prefabs for difficulties that animate note geometry/visibility or assign Vivify note prefabs. Uses Lapiz's scene-scoped redecorator API; preserves the saved cosmetic selection and custom sabers. No map-name allowlist. Host policy tests include the actual Murder Plot, Pandemonium and 42-flux difficulties. The user confirmed that manually choosing Default Notes resolves the first two maps; the automatic switching still needs a headset test.
+- **Vivify 0.6.13:** defaults to Unity's native stereo material blit instead of issuing two extra depth-slice draws for every material. Explicit `_VivifyPerEyeBlit` opt-ins remain supported. The inspected 42-flux Android bundle already contains Multiview texture-array variants. This removes duplicate submission; it is not a claim that all 42-flux effects or transition stalls are fixed.
+- **Nexora 0.3.2:** publishes the existing Unity RenderTexture decoder source and matching Android shader bundle. The reported fade from black to white remains unresolved. A prepared decoder/frame callback is not proof that video pixels were rendered correctly. No speculative decoder rewrite is included.
+- **AudioLink:** includes the current upstream repository state with its menu-crash/runtime audit changes, without modifying that work.
+- **Vivify Timeline Preview:** preserves usable map shaders for custom notes/sabers, keeps authored particle settings, and uses a soft additive particle fallback only when the original shader cannot run. The Inspector's **Rebuild preview with original map assets** button rebuilds generated instances without changing source prefabs. C# compiles against Unity 2019.4.28f1; visual/editor playback still needs a test.
+
+Known 42-flux asset limitations remain under investigation: the GLES Scram program tests note depth against zero despite forward-Z rendering; later GeometryDissolve programs use a geometry stage without a Multiview view ID. Neither is solved by a missing-keyword guess or by drawing every shader twice. Missing transitions, arrows, green effects and the final backdrop are not claimed resolved.
+
+The release contains standalone ARM64 QMODs and source, **not maps, media, generated timelines, device logs or macOS metadata**. Local build/host/package checks and CI do not establish Quest gameplay stability. This is a release candidate, not a verified stable release.

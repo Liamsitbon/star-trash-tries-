@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "0.3.1"
+MOD_VERSION = "0.3.2"
 TARGET = "1.40.8_7379"
 UNITY_VERSION = "2021.3.16f1"
 ASSET_BUNDLE = ROOT / "assets/nexoraassets.android"
@@ -152,9 +152,9 @@ def main() -> int:
         "songcore did not report its requirement",
         "beatmapcallbacksupdater",
         "unityengine::video::videoplayer",
-        "videorendermode::materialoverride",
-        "set_targetmaterialrenderer",
-        'set_targetmaterialproperty(stringw("_maintex"))',
+        "videorendermode::rendertexture",
+        "set_targettexture",
+        "ensurevideotarget",
         "set_waitforfirstframe(true)",
         "set_sendframereadyevents(true)",
         "onvideoframeready",
@@ -166,9 +166,8 @@ def main() -> int:
         "isreadableregularfile",
         "normalizevideotime",
         "failvideo(dome)",
-        "safetyvisible",
+        "releasevideotarget",
         "s_propvideoready",
-        "safety backdrop remains visible",
         "androidvideomedia",
         "nexora/media",
         "questmodinterop::inspect",
@@ -252,16 +251,12 @@ def main() -> int:
     for token in required_shader_tokens:
         if token not in shader:
             fail(f"Quest shader is missing: {token}")
-        if token not in builder and token in {
-            "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON",
-            "UNITY_VERTEX_INPUT_INSTANCE_ID", "UNITY_VERTEX_OUTPUT_STEREO",
-            "UNITY_SETUP_INSTANCE_ID", "UNITY_INITIALIZE_OUTPUT",
-            "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
-            "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX", "PackVideoUV",
-            "_Opacity * _Tint.a", "ZTest LEqual",
-            "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady"
-        }:
-            fail(f"Unity builder does not assert shader contract token: {token}")
+    # Source tokens describe the shader contract; they cannot demonstrate
+    # that stereo programs survived Unity's compiler and variant stripping.
+    for token in ("ConfigureQuestXR", "AssignLoader", "StereoRenderingModeAndroid.Multiview",
+                  "ForceRebuildAssetBundle", "NEXORA_SHADER_COMPILE"):
+        if token not in builder:
+            fail(f"Unity builder is missing Android XR configuration: {token}")
     if "NexoraCameraFX" in builder or "NexoraCameraFX" in runtime:
         fail("obsolete framebuffer camera shader path is still packaged")
 
@@ -320,7 +315,7 @@ def main() -> int:
     print(
         "Nexora Quest contract validation passed: "
         f"{len(known_events)} events, target {TARGET}, scene-safe assets, "
-        "Vulkan-safe Unity MaterialOverride video, no-black safety gate, "
+        "Unity RenderTexture video, Android XR build configuration, "
         "source-matched Unity provenance, no PC framebuffer path/artifacts"
     )
     return 0

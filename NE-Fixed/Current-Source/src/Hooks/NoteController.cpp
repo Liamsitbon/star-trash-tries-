@@ -26,6 +26,9 @@
 #include "UnityEngine/Renderer.hpp"
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/GameObject.hpp"
+#include "UnityEngine/Material.hpp"
+#include "UnityEngine/MeshFilter.hpp"
+#include "UnityEngine/Shader.hpp"
 
 #include <string_view>
 #include <unordered_set>
@@ -54,6 +57,111 @@ TracksAD::TracksVector noteTracks;
 
 std::unordered_map<std::string, std::unordered_set<NoteController*>> linkedNotes;
 std::unordered_map<NoteController*, std::unordered_set<NoteController*>*> linkedLinkedNotes;
+
+namespace {
+// Diagnostics only: at most three real and three fake notes per map, with four
+// samples each. Do not change visibility, transforms, materials or scoring here.
+struct NoteAnimationTrace {
+  unsigned id;
+  unsigned phases = 0;
+};
+std::unordered_map<CustomJSONData::CustomNoteData*, NoteAnimationTrace> noteAnimationTraces;
+unsigned tracedRealNotes = 0;
+unsigned tracedFakeNotes = 0;
+
+void BeginNoteAnimationTrace(NoteController* self, CustomJSONData::CustomNoteData* data,
+                             BeatmapObjectAssociatedData const& ad) {
+  if (!getNEConfig().runtimeDiagnostics.GetValue() || noteAnimationTraces.contains(data)) return;
+  if (!data->customData->value) return;
+  auto const& json = data->customData->value->get();
+  auto animation = json.FindMember("animation");
+  if (animation == json.MemberEnd()) animation = json.FindMember("_animation");
+  if (animation == json.MemberEnd() || !animation->value.IsObject()) return;
+  auto const& paths = animation->value;
+  if ((!paths.HasMember("offsetPosition") && !paths.HasMember("_position") &&
+       !paths.HasMember("definitePosition") && !paths.HasMember("_definitePosition")) ||
+      (!paths.HasMember("dissolve") && !paths.HasMember("_dissolve"))) return;
+
+  auto authoredFlag = [&](char const* key) {
+    auto value = json.FindMember(key);
+    return value != json.MemberEnd() && value->value.IsBool() && value->value.GetBool();
+  };
+  // Report fake status even if the failure under investigation is missing AD.
+  bool fake = ad.objectData.fake.value_or(false) || ad.objectData.uninteractable.value_or(false) ||
+              authoredFlag("NE_fake") || authoredFlag("_fake") || authoredFlag("uninteractable");
+  auto& count = fake ? tracedFakeNotes : tracedRealNotes;
+  if (count >= 3) return;
+  ++count;
+  auto id = static_cast<unsigned>(noteAnimationTraces.size() + 1);
+  noteAnimationTraces.emplace(data, NoteAnimationTrace{id});
+  NELogger::Logger.info(
+      "NE note trace init: id={} fake={} noteTime={} dataParsed={} animationParsed={} "
+      "positionPath={} dissolvePath={} arrowPath={} scoringType={}",
+      id, fake, data->time, ad.parsed, ad.animationData.parsed,
+      static_cast<bool>(ad.animationData.position), static_cast<bool>(ad.animationData.dissolve),
+      static_cast<bool>(ad.animationData.dissolveArrow), data->get_scoringType().value__);
+
+  if (id != 1) return;
+  auto& cache = NECaches::getNoteCache(self);
+  auto* cutout = NECaches::GetCutout(self, cache);
+  auto* block = cutout ? cutout->_materialPropertyBlockController.unsafePtr() : nullptr;
+  auto renderers = self->GetComponentsInChildren<Renderer*>(true);
+  NELogger::Logger.info("NE note trace renderers: total={} bodyCutout={} boundRenderers={}",
+                       renderers.size(), cutout != nullptr,
+                       block && block->_renderers ? block->_renderers.size() : 0);
+  unsigned logged = 0;
+  for (auto* renderer : renderers) {
+    if (!renderer || logged++ >= 12) continue;
+    bool bound = false;
+    if (block && block->_renderers) {
+      for (auto target : block->_renderers) {
+        if (target.unsafePtr() == renderer) bound = true;
+      }
+    }
+    auto* filter = renderer->GetComponent<MeshFilter*>();
+    auto material = renderer->get_sharedMaterial();
+    UnityW<Shader> shader = material ? material->get_shader() : UnityW<Shader>{};
+    NELogger::Logger.info(
+        "NE note trace renderer: name='{}' active={} enabled={} mesh={} bodyCutoutBound={} "
+        "material='{}' shader='{}' hasCutoutProperty={}",
+        std::string(renderer->get_name()), renderer->get_gameObject()->get_activeInHierarchy(),
+        renderer->get_enabled(), filter && filter->get_sharedMesh() != nullptr, bound,
+        material ? std::string(material->get_name()) : "<none>",
+        shader ? std::string(shader->get_name()) : "<none>",
+        material && material->HasProperty("_Cutout"));
+  }
+}
+
+bool TakeNoteAnimationTraceSample(CustomJSONData::CustomNoteData* data, float normalizedTime) {
+  if (!getNEConfig().runtimeDiagnostics.GetValue() || noteAnimationTraces.empty()) return false;
+  auto it = noteAnimationTraces.find(data);
+  if (it == noteAnimationTraces.end()) return false;
+  unsigned phase = normalizedTime >= 0.5f ? 8 : normalizedTime >= 0.475f ? 4 :
+                   normalizedTime >= 0.25f ? 2 : 1;
+  if (it->second.phases & phase) return false;
+  it->second.phases |= phase;
+  return true;
+}
+
+void LogNoteAnimationTraceSample(NoteController* self, CustomJSONData::CustomNoteData* data,
+                                 float normalizedTime, float jumpDuration,
+                                 AnimationHelper::ObjectOffset const& offset) {
+  if (self->_noteData != data) return; // A callback may have recycled this controller.
+  auto it = noteAnimationTraces.find(data);
+  if (it == noteAnimationTraces.end()) return;
+  auto position = self->get_transform()->get_localPosition();
+  auto offsetPosition = offset.positionOffset.value_or(NEVector::Vector3::zero());
+  auto& cache = NECaches::getNoteCache(self);
+  NELogger::Logger.info(
+      "NE note trace update: id={} noteTime={} normalized={} jumpDuration={} "
+      "offset=({},{},{}) dissolve={} arrow={} appliedCutout={} localPosition=({},{},{})",
+      it->second.id, data->time, normalizedTime, jumpDuration,
+      offsetPosition.x, offsetPosition.y, offsetPosition.z,
+      offset.dissolve.value_or(-1.0f), offset.dissolveArrow.value_or(-1.0f),
+      cache.cutoutEffect ? cache.cutoutEffect->_cutout : -1.0f,
+      position.x, position.y, position.z);
+}
+} // namespace
 
 static void SetGameNoteCuttable(GameNoteController* controller, bool enabled) {
   if (!controller) return;
@@ -122,6 +230,9 @@ float noteTimeAdjust(float original, float jumpDuration) {
 }
 
 void NECaches::ClearNoteCaches() {
+  noteAnimationTraces.clear();
+  tracedRealNotes = 0;
+  tracedFakeNotes = 0;
   NECaches::noteCache.clear();
   noteUpdateAD = nullptr;
   noteTracks.clear();
@@ -205,6 +316,7 @@ MAKE_HOOK_MATCH(NoteController_Init, &NoteController::Init, void, NoteController
   if (!customNoteData->customData) return;
   BeatmapObjectAssociatedData& ad = getAD(customNoteData->customData);
 
+  BeginNoteAnimationTrace(self, customNoteData, ad);
   if (!ad.parsed) return;
 
   if (il2cpp_functions::class_is_assignable_from(gameNoteControllerClass, self->klass)) {
@@ -423,7 +535,7 @@ MAKE_HOOK_MATCH(NoteController_ManualUpdate, &NoteController::ManualUpdate, void
       if (noteDissolveConfig) {
         cutoutEffect->SetCutout(1 - *offset.dissolve);
       } else {
-        cutoutEffect->SetCutout(*offset.dissolve >= 0 ? 0 : 1);
+        cutoutEffect->SetCutout(*offset.dissolve > 0 ? 0 : 1);
       }
     }
   }
@@ -438,7 +550,7 @@ MAKE_HOOK_MATCH(NoteController_ManualUpdate, &NoteController::ManualUpdate, void
         if (noteDissolveConfig) {
           disappearingArrowController->SetArrowTransparency(*offset.dissolveArrow);
         } else {
-          disappearingArrowController->SetArrowTransparency(*offset.dissolveArrow >= 0 ? 1 : 0);
+          disappearingArrowController->SetArrowTransparency(*offset.dissolveArrow > 0 ? 1 : 0);
         }
       }
     }
@@ -465,7 +577,12 @@ MAKE_HOOK_MATCH(NoteController_ManualUpdate, &NoteController::ManualUpdate, void
     }
   }
 
+  bool traceSample = TakeNoteAnimationTraceSample(customNoteData, normalTime);
+  float traceJumpDuration = traceSample ? variableMovementDataProvider.jumpDuration : 0.0f;
   NoteController_ManualUpdate(self);
+  if (traceSample) {
+    LogNoteAnimationTraceSample(self, customNoteData, normalTime, traceJumpDuration, offset);
+  }
 
   // NoteJump.ManualUpdate will be the last place this is used after it was set in
   // NoteController.ManualUpdate. To make sure it doesn't interfere with future notes, it's set

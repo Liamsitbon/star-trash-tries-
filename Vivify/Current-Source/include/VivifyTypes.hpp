@@ -195,6 +195,10 @@ struct SyncedObject {
   UnityEngine::GameObject* root = nullptr;
   float startTime = 0.0f;
   float lastVideoPlaybackSpeed = std::numeric_limits<float>::quiet_NaN();
+  // Querying VideoPlayer.time/isPlaying crosses the IL2CPP/native boundary.
+  // A short polling cadence is visually indistinguishable but avoids doing
+  // both calls for every embedded display on every Quest render frame.
+  int nextVideoClockPollFrame = 0;
   // Legacy Animation (used by DynastyLyricSubtitles) has no public absolute
   // clock.  The first Runtime::Update after registration must sample it at
   // the current song position, otherwise a practice/seek start briefly (and

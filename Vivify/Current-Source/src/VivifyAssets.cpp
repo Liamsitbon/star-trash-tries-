@@ -822,6 +822,13 @@ void Runtime::SetMaterialKeyword(UnityEngine::Material* material, ::StringW keyw
 void Runtime::ApplyStereoKeywords(UnityEngine::Material* material) const {
   if (!IsAlive(material)) return;
 
+  // These keywords are selected globally by Unity for the active XR render
+  // pass. A serialized PC/SPI material override must not compete with Quest's
+  // Multiview selection. This does not manufacture stripped shader variants.
+  SetMaterialKeyword(material, u"STEREO_INSTANCING_ON", false);
+  SetMaterialKeyword(material, u"STEREO_MULTIVIEW_ON", false);
+  SetMaterialKeyword(material, u"UNITY_SINGLE_PASS_STEREO", false);
+
   // MULTIPASS_ENABLED is valid only for Unity's actual MultiPass mode.
   bool const enableMultipassKeyword = GetMultipassRenderingEnabled();
   SetMaterialKeyword(material, u"MULTIPASS_ENABLED", enableMultipassKeyword);

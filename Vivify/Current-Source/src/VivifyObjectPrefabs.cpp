@@ -1025,6 +1025,7 @@ void Runtime::RestoreReplacementData(VisualReplacement& replacement) {
 
 void Runtime::CacheReplacementRenderers(UnityEngine::GameObject* spawned, VisualReplacement& replacement) {
   if (!IsAlive(spawned)) return;
+  ForceGameObjectRenderersOnTop(spawned);
   auto renderers = spawned->GetComponentsInChildren<UnityEngine::Renderer*>(true);
   replacement.replacementRenderers.reserve(replacement.replacementRenderers.size() + renderers.size());
   for (int i = 0; i < renderers.size(); i++) {
@@ -1033,7 +1034,6 @@ void Runtime::CacheReplacementRenderers(UnityEngine::GameObject* spawned, Visual
       // Authored foreground meshes (for example 42-flux's eclipse) can use a
       // late transparent render queue. Keep gameplay replacements at the
       // overlay sorting order without adding the old extra XR camera.
-      ForceRendererOnTop(renderer);
       replacement.replacementRenderers.emplace_back(renderer);
     }
   }
@@ -1105,9 +1105,13 @@ void Runtime::ApplyColorToRenderers(std::vector<UnityEngine::Renderer*> const& r
   }
   auto* block = _sharedColorPropertyBlock ? _sharedColorPropertyBlock.ptr() : nullptr;
   if (block == nullptr) return;
-  block->SetColor(ColorPropertyId(), color);
   for (auto* renderer : renderers) {
     if (IsAlive(renderer)) {
+      // SetPropertyBlock replaces, rather than merges, the renderer's block.
+      // Preserve cutout, animation and other mods' per-renderer values.
+      block->Clear();
+      renderer->GetPropertyBlock(block);
+      block->SetColor(ColorPropertyId(), color);
       renderer->SetPropertyBlock(block);
     }
   }
@@ -1496,8 +1500,21 @@ void Runtime::ForceGameObjectRenderersOnTop(UnityEngine::GameObject* gameObject)
   if (!IsAlive(gameObject) || _currentBeatmapData == nullptr || _isResetting) return;
   auto renderers = gameObject->GetComponentsInChildren<UnityEngine::Renderer*>(true);
   _overlayRendererSortingOrders.reserve(_overlayRendererSortingOrders.size() + renderers.size());
+  int highestOriginal = -32768;
   for (int i = 0; i < renderers.size(); i++) {
-    ForceRendererOnTop(renderers[i]);
+    auto* renderer = renderers[i];
+    if (!IsAlive(renderer)) continue;
+    auto [saved, inserted] = _overlayRendererSortingOrders.try_emplace(renderer, renderer->get_sortingOrder());
+    highestOriginal = std::max(highestOriginal, saved->second);
+  }
+  for (int i = 0; i < renderers.size(); i++) {
+    auto* renderer = renderers[i];
+    if (!IsAlive(renderer)) continue;
+    int original = _overlayRendererSortingOrders.at(renderer);
+    // Shift the group together. Assigning 32767 to every layer erased the
+    // author's order for glass, faces and arrows. Do not change ZTest/ZWrite,
+    // geometry, or unrelated environment materials to hide sorting problems.
+    renderer->set_sortingOrder(std::clamp(kGameplayOverlaySortingOrder - (highestOriginal - original), -32768, 32767));
   }
 }
 

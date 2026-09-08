@@ -18,6 +18,7 @@
 #include "UnityEngine/Mesh.hpp"
 #include "UnityEngine/MeshFilter.hpp"
 #include "UnityEngine/Renderer.hpp"
+#include "UnityEngine/RenderTexture.hpp"
 #include "UnityEngine/Vector2.hpp"
 #include "UnityEngine/Vector3.hpp"
 #include "UnityEngine/Video/VideoPlayer.hpp"
@@ -125,6 +126,7 @@ struct DomeLayer {
   UnityEngine::Renderer* renderer = nullptr;
   UnityEngine::Material* material = nullptr;
   UnityEngine::Video::VideoPlayer* video = nullptr;
+  UnityEngine::RenderTexture* videoTarget = nullptr;
   UnityEngine::Video::VideoPlayer_FrameReadyEventHandler* frameReadyDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_EventHandler* prepareCompletedDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_EventHandler* seekCompletedDelegate = nullptr;
@@ -138,7 +140,6 @@ struct DomeLayer {
   bool resumeAfterPause = false;
   bool prepareFailed = false;
   bool textureBound = false;
-  bool safetyVisible = false;
   bool customShader = false;
   bool looping = false;
   bool pendingInitialTimeTracksSong = false;
@@ -213,6 +214,8 @@ private:
   void AnimateDome(DomeLayer& dome, rapidjson::Value const& json, float eventTime);
   void UpdateDomes(float songTime);
   void UpdateVideo(DomeLayer& dome, float songTime, float realtime);
+  void EnsureVideoTarget(DomeLayer& dome);
+  void ReleaseVideoTarget(DomeLayer& dome);
   void FailVideo(DomeLayer& dome);
 
   void ApplyCameraJson(CameraVisual& visual, rapidjson::Value const& json);

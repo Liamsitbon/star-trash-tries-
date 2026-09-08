@@ -129,10 +129,12 @@ void Runtime::Update() {
     runUpdateStep("SuppressAlwaysVisibleQuads", [this]() {
       int const frame = static_cast<int>(UnityEngine::Time::get_frameCount());
       if (frame < _nextAlwaysVisibleQuadScanFrame) return;
-      // AlwaysVisibleQuad objects are sometimes recreated by the HUD after
-      // beatmap preparation.  A periodic, bounded scan catches those late
-      // instances without putting FindObjectsOfType on every render frame.
-      _nextAlwaysVisibleQuadScanFrame = frame + 30;
+      // The OnEnable hook catches normal HUD creation immediately. Keep the
+      // old fast safety scan during startup, when 42-flux rebuilds its masks,
+      // then back off the scene-wide FindObjectsOfType to once every ~5s.
+      int const delay = _alwaysVisibleQuadSafetyScanCount < 8 ? 30 : 300;
+      _nextAlwaysVisibleQuadScanFrame = frame + delay;
+      _alwaysVisibleQuadSafetyScanCount++;
       SuppressActiveAlwaysVisibleQuads();
     });
     runUpdateStep("UpdateStartupPostProcessingEvents",
@@ -440,9 +442,16 @@ void Runtime::UnregisterSyncedObject(UnityEngine::GameObject* root) {
 
 void Runtime::UpdateSyncedObjects() {
   if (_syncedObjects.empty()) return;
-  _syncedObjects.erase(std::remove_if(_syncedObjects.begin(), _syncedObjects.end(),
-                                      [](SyncedObject const& synced) { return !IsManagedAlive(synced.root); }),
-                       _syncedObjects.end());
+  int const frame = static_cast<int>(UnityEngine::Time::get_frameCount());
+  // Explicit DestroyObject paths unregister immediately. This cadence is only
+  // a safety net for prefabs destroyed by their own animation/scripts, so a
+  // full managed-object validity pass is unnecessary on every render frame.
+  if (frame >= _nextSyncedObjectPurgeFrame) {
+    _nextSyncedObjectPurgeFrame = frame + 30;
+    _syncedObjects.erase(std::remove_if(_syncedObjects.begin(), _syncedObjects.end(),
+                                        [](SyncedObject const& synced) { return !IsManagedAlive(synced.root); }),
+                         _syncedObjects.end());
+  }
   if (_syncedObjects.empty()) return;
 
   bool const paused = _pauseMenuActive || !IsManagedAlive(_audioTimeSyncController);
@@ -482,6 +491,9 @@ void Runtime::UpdateSyncedObjects() {
                      songTime, synced.startTime, animationTime);
       }
     }
+    bool const pollVideoClock = timelineJumped || heartbeat ||
+                                frame >= synced.nextVideoClockPollFrame;
+    if (pollVideoClock) synced.nextVideoClockPollFrame = frame + 6;
     for (auto* vp : synced.videoPlayers) {
       if (!IsManagedAlive(vp)) continue;
       if (paused) {
@@ -495,6 +507,7 @@ void Runtime::UpdateSyncedObjects() {
         vp->set_playbackSpeed(playbackSpeed);
         synced.lastVideoPlaybackSpeed = playbackSpeed;
       }
+      if (!pollVideoClock) continue;
       if (!vp->get_isPlaying()) {
         VIVIFY_DEBUG("Vivify sync: starting video (prepared={} songTime={} videoTime={})",
                      vp->get_isPrepared(), songTime, videoTime);
@@ -1005,6 +1018,8 @@ void Runtime::ResetRuntime(ResetMode mode) {
   _postProcessingReadyFrame = -1;
   _nextBeatmapPrepareProbeFrame = 0;
   _nextAlwaysVisibleQuadScanFrame = 0;
+  _alwaysVisibleQuadSafetyScanCount = 0;
+  _nextSyncedObjectPurgeFrame = 0;
   _declaredTextures.clear();
   _secondaryCameras.clear();
   _preEffects.clear();

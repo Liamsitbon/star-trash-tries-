@@ -7,7 +7,7 @@
     "info": {
       "name": "Noodle Extensions",
       "id": "NoodleExtensions",
-      "version": "1.8.12",
+      "version": "1.8.15",
       "url": null,
       "additionalData": {
         "overrideSoName": "libnoodleextensions.so",
@@ -65,6 +65,11 @@
       "qmodOutput": "NoodleExtensions.qmod"
     },
     "dependencies": [
+      {
+        "id": "lapiz",
+        "versionRange": "=0.2.23",
+        "additionalData": {}
+      },
       {
         "id": "beatsaber-hook",
         "versionRange": "^6.4.2",
@@ -149,6 +154,21 @@
         }
       },
       "version": "0.1.43"
+    },
+    {
+      "dependency": {
+        "id": "lapiz",
+        "versionRange": "=0.2.23",
+        "additionalData": {
+          "soLink": "https://github.com/raineaeternal/Lapiz/releases/download/v0.2.23/liblapiz.so",
+          "debugSoLink": "https://github.com/raineaeternal/Lapiz/releases/download/v0.2.23/debug_liblapiz.so",
+          "overrideSoName": "liblapiz.so",
+          "modLink": "https://github.com/raineaeternal/Lapiz/releases/download/v0.2.23/Lapiz.qmod",
+          "branchName": "version/v0_2_23",
+          "cmake": true
+        }
+      },
+      "version": "0.2.23"
     },
     {
       "dependency": {

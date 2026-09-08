@@ -41,29 +41,28 @@ def verify(component: str) -> None:
         nexora,
         (
             "UnityEngine::Video::VideoPlayer",
-            "VideoRenderMode::MaterialOverride",
-            "set_targetMaterialRenderer",
-            'set_targetMaterialProperty(StringW("_MainTex"))',
+            "VideoRenderMode::RenderTexture",
+            "set_targetTexture",
+            "EnsureVideoTarget",
             "set_waitForFirstFrame(true)",
             "set_sendFrameReadyEvents(true)",
             "OnVideoFrameReady",
-            "safetyVisible",
+            "ReleaseVideoTarget",
             "s_propVideoReady",
-            "safety backdrop remains visible",
             "AndroidVideoMedia",
         ),
     )
     failures += require_tokens(
         "Nexora header",
         header,
-        ("UnityEngine/Video/VideoPlayer.hpp", "bool safetyVisible = false;"),
+        ("UnityEngine/Video/VideoPlayer.hpp", "UnityEngine::RenderTexture* videoTarget"),
     )
     failures += require_tokens(
         "Nexora shader",
         shader,
         (
             "_VideoReady",
-            "if (_VideoReady < 0.5)",
+            "clip(_VideoReady - 0.5)",
             "STEREO_MULTIVIEW_ON",
             "STEREO_INSTANCING_ON",
             "UNITY_VERTEX_INPUT_INSTANCE_ID",

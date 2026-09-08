@@ -5,12 +5,17 @@
   "id": "NoodleExtensions",
   "modloader": "Scotland2",
   "author": "StackDoubleFlow / Braxed compatibility fork",
-  "version": "1.8.12",
+  "version": "1.8.15",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Noodle Extensions Quest 1.40.8 1.8.12 with optional SongCore capability interoperability, V3 fake-object parity, dense-note stability and restart-safe lifecycle ownership.",
+  "description": "Quest 1.40.8: automatically uses default note prefabs on difficulties with note geometry/visibility effects, preserving custom sabers, map-owned Vivify prefabs and saved cosmetic selections. Device validation of the automatic switching is still required.",
   "coverImage": "cover.png",
   "dependencies": [
+    {
+      "version": "^0.2.23",
+      "id": "lapiz",
+      "downloadIfMissing": "https://github.com/raineaeternal/Lapiz/releases/download/v0.2.23/Lapiz.qmod"
+    },
     {
       "version": "^6.4.2",
       "id": "beatsaber-hook",

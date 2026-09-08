@@ -92,13 +92,20 @@ bool QueueStereoMaterialBlit(UnityEngine::Rendering::CommandBuffer* commandBuffe
     return false;
   }
 
-  // Most Vivify materials were authored as ordinary 2D post-processing
-  // shaders (their bundles quite correctly report no stereo keyword).  A
-  // regular CommandBuffer.Blit against Quest's Tex2DArray can then update
-  // only the active/left slice.  Unity exposes the depth-slice overload for
-  // exactly this case: run the same authored pass once per eye, preserving
-  // the map's material/pass semantics without asking the shader to implement
-  // Multiview itself.
+  static int const perEyeProperty = UnityEngine::Shader::PropertyToID(u"_VivifyPerEyeBlit");
+  if (!material->HasProperty(perEyeProperty) || material->GetFloat(perEyeProperty) <= 0.5f) {
+    // Depth-slice draws are an explicit legacy opt-in, not the default.
+    // Material.IsKeywordEnabled(false) does NOT mean a shader lacks stereo
+    // variants: Unity selects STEREO_MULTIVIEW_ON globally. The actual 42-flux
+    // Android Scram bundle contains gl_ViewID_OVR + sampler2DArray programs.
+    // Running those passes twice with an extra slice selector duplicates the
+    // stereo axis and fragment work. Keep Unity's native stereo draw intact.
+    return false;
+  }
+
+  // Only shaders authored for this contract may request explicit per-slice
+  // draws. A depth-slice overload alone cannot turn sampler2D into a valid
+  // sampler2DArray for arbitrary unported desktop shaders.
   auto sourceId = ToTargetId(source);
   auto destinationId = ToTargetId(destination);
   UnityEngine::Vector2 const scale(1.0f, 1.0f);
@@ -196,9 +203,8 @@ void Runtime::ApplyBlits(UnityEngine::RenderTexture* src, UnityEngine::RenderTex
     if (IsAlive(temp)) UnityEngine::RenderTexture::ReleaseTemporary(temp);
   }
   _imageSelfBlitTemps.clear();
-  // Multiview-aware materials stay on the normal path. Ordinary authored
-  // materials are redirected through QueueStereoMaterialBlit below so each
-  // Quest eye receives the same post-processing pass.
+  // Native stereo is the default. Only explicit _VivifyPerEyeBlit opt-ins
+  // use the legacy per-slice path below.
   if (UsesTextureArrayStereo()) {
     cb->SetGlobalFloat(StereoActiveEyePropertyId(), 0.0f);
   }
@@ -215,8 +221,7 @@ void Runtime::ApplyBlits(UnityEngine::RenderTexture* src, UnityEngine::RenderTex
       if (!QueueStereoArrayCopy(cb, sourceTexture, destinationTexture)) cb->Blit(srcId, dstId);
     }
     else if (QueueStereoMaterialBlit(cb, sourceTexture, destinationTexture, material, pass)) {
-      // The depth-slice overload above is the stereo-safe path for ordinary
-      // (non-Multiview) Vivify materials on Quest.
+      // The material explicitly opted into the legacy per-slice contract.
     }
     else if (pass >= 0) cb->Blit(srcId, dstId, material, pass);
     else cb->Blit(srcId, dstId, material);

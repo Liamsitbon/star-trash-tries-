@@ -6,6 +6,7 @@
 #include "GlobalNamespace/CutoutEffect.hpp"
 #include "GlobalNamespace/CutoutAnimateEffect.hpp"
 #include "UnityEngine/Vector3.hpp"
+#include "UnityEngine/Mathf.hpp"
 
 #include "Animation/AnimationHelper.h"
 #include "Animation/ParentObject.h"
@@ -22,17 +23,20 @@ MAKE_HOOK_MATCH(CutoutEffect_SetCutout,
                     &GlobalNamespace::CutoutEffect::SetCutout),
                 void, CutoutEffect* self, float cutout, UnityEngine::Vector3 cutoutOffset) {
   // Do not run SetCutout if the new value is the same as old.
-  if (std::abs(cutout - self->_cutout) <= 0.005) return;
+  // Match Heck's comparison. A 0.005 dead zone discards the final transition
+  // to fully hidden and can leave thin rows of future/fake notes on screen.
+  if (UnityEngine::Mathf::Approximately(cutout, self->_cutout)) return;
 
   CutoutEffect_SetCutout(self, cutout, cutoutOffset);
 }
 
-// MAKE_HOOK_MATCH(CutoutAnimateEffect_Start, &GlobalNamespace::CutoutAnimateEffect::Start, void,
-//                 CutoutAnimateEffect* self) {}
+// Do not inline-hook CutoutAnimateEffect.Start: the 1.40.8 Quest method is
+// only 8 bytes, below beatsaber-hook's 20-byte patch requirement. PC Heck's
+// Harmony SkipStart patch cannot be transplanted here safely. The existing
+// SetArrowTransparency hook reapplies the arrow cutout even on a cache hit.
 
 void InstallCutoutEffectHooks() {
   INSTALL_HOOK(NELogger::Logger, CutoutEffect_SetCutout);
-  //    INSTALL_HOOK(NELogger::Logger, CutoutAnimateEffect_Start)
 }
 
 NEInstallHooks(InstallCutoutEffectHooks);

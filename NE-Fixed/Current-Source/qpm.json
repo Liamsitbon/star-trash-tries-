@@ -6,7 +6,7 @@
   "info": {
     "name": "Noodle Extensions",
     "id": "NoodleExtensions",
-    "version": "1.8.12",
+    "version": "1.8.15",
     "url": null,
     "additionalData": {
       "overrideSoName": "libnoodleextensions.so",
@@ -64,6 +64,11 @@
     "qmodOutput": "NoodleExtensions.qmod"
   },
   "dependencies": [
+    {
+      "id": "lapiz",
+      "versionRange": "=0.2.23",
+      "additionalData": {}
+    },
     {
       "id": "beatsaber-hook",
       "versionRange": "^6.4.2",

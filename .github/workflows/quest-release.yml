@@ -42,22 +42,22 @@ jobs:
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 scripts/validate_contract.py
-            qmod: release/Nexora-Quest-0.3.1.qmod
-            release_name: Nexora-Quest-0.3.1.qmod
+            qmod: release/Nexora-Quest-0.3.2.qmod
+            release_name: Nexora-Quest-0.3.2.qmod
           - name: Vivify
             project: Vivify/Current-Source
             build: pwsh -NoProfile -File scripts/build.ps1 -clean
             package: python3 scripts/package_qmod.py
             check: VIVIFY_SKIP_HOST_TESTS=1 bash scripts/verify-port-source.sh
-            qmod: release/Vivify-Quest-0.6.10.qmod
-            release_name: Vivify-Quest-0.6.10.qmod
+            qmod: release/Vivify-Quest-0.6.13.qmod
+            release_name: Vivify-Quest-0.6.13.qmod
           - name: NoodleExtensions
             project: NE-Fixed/Current-Source
             build: bash scripts/build.sh --release --clean
             package: bash scripts/buildQMOD.sh
             check: bash scripts/validateProject.sh
             qmod: NoodleExtensions.qmod
-            release_name: NoodleExtensions-Quest-1.8.12.qmod
+            release_name: NoodleExtensions-Quest-1.8.15.qmod
           - name: AudioLink
             project: BSAudioLink-Quest-master
             build: pwsh -NoProfile -File scripts/build.ps1 -release
@@ -92,6 +92,13 @@ jobs:
       - name: Build ARM64 library
         working-directory: ${{ matrix.project }}
         run: ${{ matrix.build }}
+
+      - name: Test note-effect classification
+        if: matrix.name == 'NoodleExtensions'
+        working-directory: ${{ matrix.project }}
+        run: |
+          g++ -std=c++20 -I include -I extern/includes tests/note_effect_policy_test.cpp -o "$RUNNER_TEMP/note-effect-policy"
+          "$RUNNER_TEMP/note-effect-policy"
 
       - name: Package QMOD
         working-directory: ${{ matrix.project }}
@@ -161,7 +168,11 @@ jobs:
 
       - name: Create checksums
         working-directory: dist
-        run: sha256sum *.qmod *.tar.gz > SHA256SUMS
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/TimelinePreview/Assets/VivifyTimelinePreview" ]; then
+            (cd "$GITHUB_WORKSPACE/TimelinePreview" && zip -q -r -X "$GITHUB_WORKSPACE/dist/VivifyTimelinePreview.zip" Assets)
+          fi
+          sha256sum *.qmod *.tar.gz *.zip > SHA256SUMS
 
       - name: Create or update GitHub Release
         env:
@@ -169,11 +180,14 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
+            release_flags=()
+            case "$RELEASE_TAG" in *-rc[0-9]*) release_flags+=(--prerelease);; esac
+            gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Quest mods for Beat Saber 1.40.8_7379" \
-              --generate-notes
+              --notes-file docs/releases/2026-09-08-note-compat.md \
+              "${release_flags[@]}"
           fi

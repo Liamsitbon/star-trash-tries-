@@ -77,6 +77,8 @@ void NECaches::ResetRuntimeState(char const* reason) {
   }
 }
 
+void InstallCustomNoteCompatibility();
+
 void InstallAndRegisterAll() {
   static bool registered = false;
   if (registered) {
@@ -87,13 +89,16 @@ void InstallAndRegisterAll() {
 
   auto cjdModInfo = CustomJSONData::modInfo.to_c();
   auto tracksModInfo = CModInfo{ .id = "Tracks" };
+  auto lapizModInfo = CModInfo{ .id = "Lapiz" };
 
   modloader_require_mod(&cjdModInfo, CMatchType::MatchType_IdOnly);
   modloader_require_mod(&tracksModInfo, CMatchType::MatchType_IdOnly);
+  modloader_require_mod(&lapizModInfo, CMatchType::MatchType_IdOnly);
   // Chroma is compatible, but it is not required for Noodle animation maps.
 
   Hooks::InstallHooks();
   NEEvents::AddEventCallbacks();
+  InstallCustomNoteCompatibility();
   if (!SongCore::API::Capabilities::IsCapabilityRegistered(
           NoodleExtensions::U8_REQUIREMENTNAME)) {
     SongCore::API::Capabilities::RegisterCapability(

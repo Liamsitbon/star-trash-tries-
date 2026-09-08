@@ -117,7 +117,7 @@ void InstallNexoraFileLogSink() {
                  << " maxLayers=" << gMaxLayers
                  << " syncTol=" << gSyncTolerance
                  << " domeRes=" << gDomeResolution
-                 << " rendererPath=UnityMaterialOverride"
+                 << " rendererPath=UnityRenderTexture"
                  << "\n";
   gNexoraLogFile.flush();
 

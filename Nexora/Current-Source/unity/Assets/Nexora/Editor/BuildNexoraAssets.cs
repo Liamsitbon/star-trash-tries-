@@ -1,13 +1,38 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Rendering;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.XR.Management;
+using Unity.XR.Oculus;
 
 namespace Nexora.Editor
 {
+    internal sealed class NexoraShaderBuildLog : IPreprocessShaders
+    {
+        public int callbackOrder => int.MaxValue;
+
+        public void OnProcessShader(Shader shader, ShaderSnippetData snippet,
+                                    IList<ShaderCompilerData> variants)
+        {
+            if (shader.name != "Nexora/VideoDome") return;
+            var multiview = new ShaderKeyword("STEREO_MULTIVIEW_ON");
+            var instancing = new ShaderKeyword("STEREO_INSTANCING_ON");
+            foreach (var platform in variants.GroupBy(value => value.shaderCompilerPlatform))
+                Debug.Log($"NEXORA_SHADER_COMPILE platform={platform.Key} stage={snippet.shaderType} " +
+                    $"variants={platform.Count()} multiview={platform.Count(value => value.shaderKeywordSet.IsEnabled(multiview))} " +
+                    $"stereoInstanced={platform.Count(value => value.shaderKeywordSet.IsEnabled(instancing))}");
+        }
+    }
+
     public static class BuildNexoraAssets
     {
         private const string DomeShaderPath = "Assets/Nexora/Shaders/NexoraDome.shader";
@@ -53,36 +78,61 @@ namespace Nexora.Editor
             }
         }
 
+        private static void ConfigureQuestXR()
+        {
+            // XR must be configured in the bundle project too. Merely having
+            // stereo keywords in ShaderLab does not keep their compiled variants.
+            const string folder = "Assets/Nexora/XR";
+            if (!AssetDatabase.IsValidFolder(folder))
+                AssetDatabase.CreateFolder("Assets/Nexora", "XR");
+            string path = folder + "/XRGeneralSettings.asset";
+            var settings = AssetDatabase.LoadAssetAtPath<XRGeneralSettingsPerBuildTarget>(path);
+            if (settings == null)
+            {
+                settings = ScriptableObject.CreateInstance<XRGeneralSettingsPerBuildTarget>();
+                AssetDatabase.CreateAsset(settings, path);
+            }
+            EditorBuildSettings.AddConfigObject(XRGeneralSettings.k_SettingsKey, settings, true);
+            if (!settings.HasSettingsForBuildTarget(BuildTargetGroup.Android))
+                settings.CreateDefaultSettingsForBuildTarget(BuildTargetGroup.Android);
+            if (!settings.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
+                settings.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            var android = settings.SettingsForBuildTarget(BuildTargetGroup.Android);
+            android.InitManagerOnStart = true;
+            if (!XRPackageMetadataStore.AssignLoader(android.Manager,
+                    "Unity.XR.Oculus.OculusLoader", BuildTargetGroup.Android))
+                throw new InvalidOperationException("Cannot configure Nexora Android Oculus XR loader.");
+
+            var oculus = AssetDatabase.LoadAssetAtPath<OculusSettings>(folder + "/OculusSettings.asset");
+            if (oculus == null)
+            {
+                oculus = ScriptableObject.CreateInstance<OculusSettings>();
+                AssetDatabase.CreateAsset(oculus, folder + "/OculusSettings.asset");
+            }
+            oculus.m_StereoRenderingModeAndroid = OculusSettings.StereoRenderingModeAndroid.Multiview;
+            EditorBuildSettings.AddConfigObject("Unity.XR.Oculus.Settings", oculus, true);
+            PlayerSettings.stereoRenderingPath = StereoRenderingPath.Instancing;
+            EditorUtility.SetDirty(oculus);
+            EditorUtility.SetDirty(settings);
+            EditorUtility.SetDirty(android);
+            EditorUtility.SetDirty(android.Manager);
+            AssetDatabase.SaveAssets();
+        }
+
         [MenuItem("Nexora/Build Android shader bundle")]
         public static void BuildAndroid()
         {
+            ConfigureQuestXR();
             PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
             PlayerSettings.SetGraphicsAPIs(
                 BuildTarget.Android,
                 new[] { GraphicsDeviceType.Vulkan, GraphicsDeviceType.OpenGLES3 });
 
+            AssetDatabase.ImportAsset(DomeShaderPath,
+                ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
             var shader = AssetDatabase.LoadAssetAtPath<Shader>(DomeShaderPath);
             if (shader == null)
                 throw new InvalidOperationException($"Nexora dome shader is unavailable: {DomeShaderPath}");
-
-            var shaderSource = File.ReadAllText(
-                Path.Combine(Application.dataPath, "Nexora/Shaders/NexoraDome.shader"));
-            foreach (var requiredToken in new[]
-                     {
-                         "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON",
-                         "UNITY_VERTEX_INPUT_INSTANCE_ID", "UNITY_VERTEX_OUTPUT_STEREO",
-                         "UNITY_SETUP_INSTANCE_ID", "UNITY_INITIALIZE_OUTPUT",
-                         "UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO",
-                         "UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX",
-                         "PackVideoUV", "_Opacity * _Tint.a",
-                         "_FlipY", "_SwapEyes", "_CameraAmount", "_VideoReady",
-                         "ZTest LEqual"
-                     })
-            {
-                if (!shaderSource.Contains(requiredToken))
-                    throw new InvalidOperationException(
-                        $"Nexora Quest shader contract is missing token: {requiredToken}");
-            }
 
             var material = AssetDatabase.LoadAssetAtPath<Material>(DomeMaterialPath);
             if (material == null)
@@ -95,13 +145,14 @@ namespace Nexora.Editor
                 material.shader = shader;
                 EditorUtility.SetDirty(material);
             }
+            material.enableInstancing = true;
+            EditorUtility.SetDirty(material);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             ThrowOnShaderErrors(shader);
 
-            var output = Path.Combine(Path.GetTempPath(), "NexoraAssetBundleAndroid");
-            if (Directory.Exists(output)) Directory.Delete(output, true);
+            var output = Path.Combine(Path.GetTempPath(), "NexoraAssetBundleAndroid-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(output);
 
             var builds = new[]
@@ -116,7 +167,9 @@ namespace Nexora.Editor
                 output,
                 builds,
                 BuildAssetBundleOptions.ChunkBasedCompression |
-                BuildAssetBundleOptions.DeterministicAssetBundle,
+                BuildAssetBundleOptions.DeterministicAssetBundle |
+                BuildAssetBundleOptions.StrictMode |
+                BuildAssetBundleOptions.ForceRebuildAssetBundle,
                 BuildTarget.Android);
             if (manifest == null)
                 throw new InvalidOperationException("Unity did not build the Nexora Android bundle.");
