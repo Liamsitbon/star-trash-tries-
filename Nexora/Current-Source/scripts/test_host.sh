@@ -16,3 +16,12 @@ trap cleanup_host_test EXIT
   -o "$NEXORA_TEST_BINARY"
 "$NEXORA_TEST_BINARY"
 echo "Nexora host lifecycle test passed"
+
+"$NEXORA_HOST_CXX" \
+  -std=c++20 -Wall -Wextra -Werror -pedantic \
+  -I"$NEXORA_ROOT/include" \
+  "$NEXORA_ROOT/tests/video_pixel_stats_test.cpp" \
+  -o "$NEXORA_TEST_DIR/video_pixel_stats_test"
+"$NEXORA_TEST_DIR/video_pixel_stats_test"
+echo "Nexora bounded video pixel statistics test passed"
+python3 "$NEXORA_ROOT/tests/test_video_log.py"

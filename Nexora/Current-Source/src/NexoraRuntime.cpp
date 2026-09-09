@@ -1753,6 +1753,7 @@ void Runtime::ReleaseVideoTarget(DomeLayer& dome) {
   }
   dome.videoTarget = nullptr;
   dome.textureBound = false;
+  dome.videoDiagnosticSampled = false;
 }
 
 void Runtime::EnsureVideoTarget(DomeLayer& dome) {
@@ -2130,7 +2131,10 @@ void Runtime::Update() {
       ResetSession(true);
       return;
     }
-    if (_lifecycle.IsSuspended()) return;
+    if (_lifecycle.IsSuspended()) {
+      CapturePausedVideoDiagnostics();
+      return;
+    }
     float const songTime = SongTime();
     if (_lastSongTime >= 0.0f && songTime + 0.35f < _lastSongTime) {
       for (auto& [_, dome] : _domes) dome.lastSyncRealtime = -1000.0f;

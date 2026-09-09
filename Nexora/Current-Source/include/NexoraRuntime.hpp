@@ -140,6 +140,7 @@ struct DomeLayer {
   bool resumeAfterPause = false;
   bool prepareFailed = false;
   bool textureBound = false;
+  bool videoDiagnosticSampled = false;
   bool customShader = false;
   bool looping = false;
   bool pendingInitialTimeTracksSong = false;
@@ -217,6 +218,7 @@ private:
   void EnsureVideoTarget(DomeLayer& dome);
   void ReleaseVideoTarget(DomeLayer& dome);
   void FailVideo(DomeLayer& dome);
+  void CapturePausedVideoDiagnostics();
 
   void ApplyCameraJson(CameraVisual& visual, rapidjson::Value const& json);
   void SetCameraEffect(rapidjson::Value const& json, float eventTime, bool animated);
