@@ -5,10 +5,10 @@
   "id": "nexora",
   "modloader": "Scotland2",
   "author": "Liam Sitbon",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Quest 360 video worlds using Unity 2D RenderTextures, Android Multiview shader variants, song sync, stereo projection and dome effects.",
+  "description": "Quest 360 video worlds. Direct Video RC: visible-video path enabled by default; Nexora fragment color/UV effects temporarily bypassed. Song sync, projection, opacity and independent Vivify effects remain enabled.",
   "dependencies": [
     {
       "version": "^6.4.2",

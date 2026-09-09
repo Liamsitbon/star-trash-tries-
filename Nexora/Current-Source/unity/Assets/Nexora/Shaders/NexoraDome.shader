@@ -4,6 +4,12 @@ Shader "Nexora/VideoDome"
     {
         _MainTex ("360 Video", 2D) = "black" {}
         [HideInInspector] _VideoReady ("Decoded Video Ready", Float) = 0
+        [HideInInspector] _RawSampling ("Diagnostic: bypass video effects", Float) = 0
+        [HideInInspector] _SimpleSampling ("Neutral video fast path", Float) = 1
+        [HideInInspector] _DepthWrite ("RGBD opaque depth write", Float) = 0
+        [HideInInspector] _RgbdNear ("RGBD near radial distance (m)", Float) = 2
+        [HideInInspector] _RgbdFar ("RGBD far radial distance (m)", Float) = 100
+        [HideInInspector] _RgbdColorWidth ("RGB panel width fraction", Float) = 0.8
         _Tint ("Tint", Color) = (1,1,1,1)
         _Opacity ("Opacity", Range(0,1)) = 1
         _Brightness ("Brightness", Range(0,8)) = 1
@@ -52,7 +58,7 @@ Shader "Nexora/VideoDome"
     {
         Tags { "Queue"="Geometry+501" "RenderType"="Transparent" "IgnoreProjector"="True" }
         Cull Off
-        ZWrite Off
+        ZWrite [_DepthWrite]
         ZTest LEqual
         Blend [_SrcBlend] [_DstBlend]
 
@@ -64,12 +70,18 @@ Shader "Nexora/VideoDome"
             #pragma fragment frag
             #pragma multi_compile_instancing
             #pragma multi_compile _ UNITY_SINGLE_PASS_STEREO STEREO_INSTANCING_ON STEREO_MULTIVIEW_ON
+            // Runtime-enabled opt-in. Keep both variants in AssetBundle-only
+            // builds; shader_feature would strip the unauthored RGBD variant.
+            #pragma multi_compile_local _ NEXORA_RGBD_ON
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float4 _MainTex_TexelSize;
             float4 _Tint;
             float _VideoReady;
+            float _RawSampling, _SimpleSampling;
+            float _RgbdNear, _RgbdFar, _RgbdColorWidth;
             float _Opacity, _Brightness, _Exposure, _Saturation, _HueShift;
             float _ProjectionMode, _FlipX, _FlipY, _SwapEyes;
             float _DeformAmplitude, _DeformFrequency, _DeformSpeed;
@@ -121,6 +133,14 @@ Shader "Nexora/VideoDome"
                 // Clamp before packing so a sampler with Repeat state can never
                 // wrap an SBS/OU sample into the other eye's half.
                 localUV = saturate(localUV);
+                #if defined(NEXORA_RGBD_ON)
+                    // Half-texel inset avoids bilinear bleed of grayscale depth
+                    // into RGB at the panel boundary. RGBD is mono, not SBS.
+                    localUV.x = clamp(localUV.x * _RgbdColorWidth,
+                        _MainTex_TexelSize.x * 0.5,
+                        _RgbdColorWidth - _MainTex_TexelSize.x * 0.5);
+                    return localUV;
+                #endif
                 if (_ProjectionMode > 1.5)
                     localUV.x = localUV.x * 0.5 + (eye > 0.5 ? 0.5 : 0.0);
                 else if (_ProjectionMode > 0.5)
@@ -146,6 +166,22 @@ Shader "Nexora/VideoDome"
                 float sn = sin(twistAngle);
                 float cs = cos(twistAngle);
                 p.xz = mul(float2x2(cs, -sn, sn, cs), p.xz);
+                #if defined(NEXORA_RGBD_ON)
+                    float2 depthUV = v.uv;
+                    depthUV.x = lerp(depthUV.x, 1.0 - depthUV.x, _FlipX);
+                    depthUV.y = lerp(depthUV.y, 1.0 - depthUV.y, _FlipY);
+                    depthUV.x = clamp(_RgbdColorWidth + saturate(depthUV.x) * (1.0 - _RgbdColorWidth),
+                        _RgbdColorWidth + _MainTex_TexelSize.x * 0.5,
+                        1.0 - _MainTex_TexelSize.x * 0.5);
+                    float depthCode = tex2Dlod(_MainTex, float4(depthUV, 0, 0)).r;
+                    // The panel encodes linear radial distance in video code
+                    // values. Undo the sRGB sampler transfer in Linear projects;
+                    // leave RGB's normal color-space handling untouched.
+                    #if !defined(UNITY_COLORSPACE_GAMMA)
+                        depthCode = LinearToGammaSpace(float3(depthCode, depthCode, depthCode)).r;
+                    #endif
+                    p *= lerp(_RgbdNear, _RgbdFar, saturate(depthCode));
+                #endif
                 o.vertex = UnityObjectToClipPos(float4(p, 1));
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 return o;
@@ -164,6 +200,18 @@ Shader "Nexora/VideoDome"
 
                 float eye = (float)unity_StereoEyeIndex;
                 eye = lerp(eye, 1.0 - eye, step(0.5, _SwapEyes));
+
+                // A/B uses the same mesh, renderer, stereo setup and texture.
+                // Only fragment effects are bypassed; no replacement backdrop.
+                if (_RawSampling > 0.5)
+                    return fixed4(tex2D(_MainTex, PackVideoUV(uv, eye)).rgb,
+                                  _Opacity * _Tint.a);
+                if (_SimpleSampling > 0.5)
+                {
+                    float3 rgb = tex2D(_MainTex, PackVideoUV(uv, eye)).rgb;
+                    return fixed4(rgb * _Tint.rgb * _Brightness * exp2(_Exposure),
+                                  _Opacity * _Tint.a);
+                }
 
                 // Keep all geometric and camera effects in eye-local 0..1 UV
                 // space. Packing before distortion makes the two stereo eyes
@@ -237,7 +285,8 @@ Shader "Nexora/VideoDome"
                                               _CameraScanline * cameraAmount));
                 color *= 1.0 - scanline *
                          (0.08 + 0.08 * sin(uv.y * 1800.0 + _Time.y * 25.0));
-                float vignette = smoothstep(0.82, 0.18, length(centered));
+                // GLSL smoothstep is undefined when edge0 >= edge1.
+                float vignette = 1.0 - smoothstep(0.18, 0.82, length(centered));
                 color *= lerp(1.0, vignette,
                               saturate(max(_Vignette,
                                            _CameraVignette * cameraAmount)));

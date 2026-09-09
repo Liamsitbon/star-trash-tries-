@@ -1,5 +1,6 @@
 #include "main.hpp"
 #include "NexoraRuntime.hpp"
+#include "VideoRenderPolicy.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,6 +18,8 @@ namespace {
 bool gEnabled = true;
 bool gFileLogging = true;
 bool gDebugLogging = false;
+bool gRawVideoDiagnostic = false;
+bool gDirectVideoRendering = Nexora::kDefaultDirectVideoRendering;
 bool gCameraEffects = true;
 int gMaxLayers = 3;
 float gSyncTolerance = 0.085f;
@@ -133,6 +136,10 @@ void InstallNexoraFileLogSink() {
 bool GetNexoraEnabled() { return gEnabled; }
 bool GetFileLoggingEnabled() { return gFileLogging; }
 bool GetDebugLoggingEnabled() { return gDebugLogging; }
+bool GetRawVideoDiagnosticEnabled() { return gRawVideoDiagnostic; }
+bool GetDirectVideoRenderingEnabled() {
+  return Nexora::UseDirectVideoRendering(gDirectVideoRendering, gRawVideoDiagnostic);
+}
 bool GetCameraEffectsEnabled() { return gCameraEffects; }
 int GetMaxLayers() { return gMaxLayers; }
 float GetSyncToleranceSeconds() { return gSyncTolerance; }
@@ -146,6 +153,9 @@ void EnsureConfigDefaults() {
   changed |= EnsureBool("enabled", true, gEnabled);
   changed |= EnsureBool("fileLogging", true, gFileLogging);
   changed |= EnsureBool("debugLogging", false, gDebugLogging);
+  changed |= EnsureBool("rawVideoDiagnostic", false, gRawVideoDiagnostic);
+  changed |= EnsureBool(Nexora::kDirectVideoSetting,
+                        Nexora::kDefaultDirectVideoRendering, gDirectVideoRendering);
   changed |= EnsureBool("cameraEffects", true, gCameraEffects);
   changed |= EnsureInt("maxLayers", 3, 1, 6, gMaxLayers);
   changed |= EnsureFloat("syncToleranceSeconds", 0.085f, 0.02f, 0.5f, gSyncTolerance);
@@ -161,9 +171,12 @@ MOD_EXTERN_FUNC void setup(CModInfo* info) noexcept {
     EnsureConfigDefaults();
     InstallNexoraFileLogSink();
     PaperLogger.info(
-        "Nexora {} setup: enabled={} fileLogging={} debugLogging={} maxLayers={} cameraEffects={} syncTolerance={} domeRes={}",
+        "Nexora {} setup: enabled={} fileLogging={} debugLogging={} maxLayers={} cameraEffects={} syncTolerance={} domeRes={} directVideo={}",
         VERSION, gEnabled, gFileLogging, gDebugLogging, gMaxLayers,
-        gCameraEffects, gSyncTolerance, gDomeResolution);
+        gCameraEffects, gSyncTolerance, gDomeResolution, GetDirectVideoRenderingEnabled());
+    if (GetDirectVideoRenderingEnabled()) {
+      PaperLogger.info("Direct video mode: Nexora fragment color/UV effects are bypassed; sync, projection, opacity and independent Vivify effects remain enabled");
+    }
   } catch (std::exception const& exception) {
     try {
       PaperLogger.error("Nexora setup failed safely: {}", exception.what());

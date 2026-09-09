@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "UnityEngine/Mesh.hpp"
+#include "UnityEngine/Bounds.hpp"
 #include "UnityEngine/MeshFilter.hpp"
 #include "UnityEngine/MeshRenderer.hpp"
 #include "UnityEngine/Object.hpp"
@@ -87,6 +88,12 @@ int s_propFlipX = 0;
 int s_propFlipY = 0;
 int s_propSwapEyes = 0;
 int s_propVideoReady = 0;
+int s_propRawSampling = 0;
+int s_propSimpleSampling = 0;
+int s_propRgbdNear = 0;
+int s_propRgbdFar = 0;
+int s_propRgbdColorWidth = 0;
+int s_propDepthWrite = 0;
 
 int s_propCameraAmount = 0;
 int s_propCameraFisheye = 0;
@@ -418,6 +425,12 @@ void Runtime::InitPropertyIds() {
   s_propSrcBlend = UnityEngine::Shader::PropertyToID(StringW("_SrcBlend"));
   s_propDstBlend = UnityEngine::Shader::PropertyToID(StringW("_DstBlend"));
   s_propMainTex = UnityEngine::Shader::PropertyToID(StringW("_MainTex"));
+  s_propRawSampling = UnityEngine::Shader::PropertyToID(u"_RawSampling");
+  s_propSimpleSampling = UnityEngine::Shader::PropertyToID(u"_SimpleSampling");
+  s_propRgbdNear = UnityEngine::Shader::PropertyToID(u"_RgbdNear");
+  s_propRgbdFar = UnityEngine::Shader::PropertyToID(u"_RgbdFar");
+  s_propRgbdColorWidth = UnityEngine::Shader::PropertyToID(u"_RgbdColorWidth");
+  s_propDepthWrite = UnityEngine::Shader::PropertyToID(u"_DepthWrite");
   s_propFlipX = UnityEngine::Shader::PropertyToID(StringW("_FlipX"));
   s_propFlipY = UnityEngine::Shader::PropertyToID(StringW("_FlipY"));
   s_propSwapEyes = UnityEngine::Shader::PropertyToID(StringW("_SwapEyes"));
@@ -447,7 +460,7 @@ void Runtime::InitPropertyIds() {
 
 UnityEngine::Mesh* Runtime::CreateProceduralDomeMesh(int rings, int segments, float radius) {
   rings = std::clamp(rings, 16, 128);
-  segments = std::clamp(segments, 16, 128);
+  segments = std::clamp(segments, 16, kRgbdSegments);
 
   int const vertexCount = (rings + 1) * (segments + 1);
   int const triangleIndexCount = rings * segments * 6;
@@ -1114,6 +1127,7 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
 
   InitPropertyIds();
   UnityEngine::GameObject* object = nullptr;
+  UnityEngine::GameObject* decoderObject = nullptr;
   UnityEngine::MeshFilter* filter = nullptr;
   UnityEngine::MeshRenderer* renderer = nullptr;
   UnityEngine::Mesh* mesh = nullptr;
@@ -1146,6 +1160,7 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
     try {
       if (Alive(material)) UnityEngine::Object::Destroy(material);
       if (Alive(mesh)) UnityEngine::Object::Destroy(mesh);
+      if (Alive(decoderObject)) UnityEngine::Object::Destroy(decoderObject);
       if (Alive(object)) UnityEngine::Object::Destroy(object);
     } catch (...) {
     }
@@ -1190,7 +1205,14 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
     renderer->set_receiveShadows(false);
     renderer->set_enabled(false);
 
-    video = object->AddComponent<UnityEngine::Video::VideoPlayer*>();
+    // Keep the decoder away from the dome Renderer. A newly attached player
+    // can auto-target a Renderer on its own GameObject before renderMode is
+    // configured. Configure an inactive, renderer-free child first instead.
+    decoderObject = UnityEngine::GameObject::New_ctor(StringW("NexoraDecoder_" + id));
+    if (!Alive(decoderObject)) throw std::runtime_error("could not create video decoder object");
+    decoderObject->SetActive(false);
+    decoderObject->get_transform()->SetParent(object->get_transform(), false);
+    video = decoderObject->AddComponent<UnityEngine::Video::VideoPlayer*>();
     if (!Alive(video)) {
       throw std::runtime_error("Unity VideoPlayer component is unavailable");
     }
@@ -1203,6 +1225,7 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
     video->set_audioOutputMode(UnityEngine::Video::VideoAudioOutputMode::None);
     video->set_playOnAwake(false);
     video->set_waitForFirstFrame(true);
+    decoderObject->SetActive(true);
 
     std::function<void(UnityEngine::Video::VideoPlayer*, std::int64_t)> frameReady =
         [](UnityEngine::Video::VideoPlayer* player, std::int64_t frameIndex) {
@@ -1255,6 +1278,7 @@ DomeLayer* Runtime::EnsureDome(std::string const& id) {
     DomeLayer layer;
     layer.id = id;
     layer.object = object;
+    layer.decoderObject = decoderObject;
     layer.filter = filter;
     layer.mesh = mesh;
     layer.renderer = renderer;
@@ -1335,8 +1359,68 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
   auto queuedAnimation = dome.animation;
   bool const animationArrivedFirst = queuedAnimation.active &&
       std::fabs(queuedAnimation.startSongTime - eventTime) <= 0.001f;
+  // RGBD is a per-media opt-in: never interpret an ordinary RGB file as depth,
+  // and never retain a previous video's depth layout on a later LoadVideo.
+  RgbdVideo rgbd;
+  auto const depth = json.FindMember("rgbd");
+  if (depth != json.MemberEnd()) {
+    if (!depth->value.IsObject()) throw std::runtime_error("rgbd must be an object");
+    auto const& value = depth->value;
+    auto const layout = ReadString(value, "layout");
+    auto const nearMeters = ReadFloat(value, "nearMeters");
+    auto const farMeters = ReadFloat(value, "farMeters");
+    auto const colorWidth = ReadFloat(value, "colorWidth");
+    if (!layout || *layout != "color-left-depth-right" || !nearMeters || !farMeters || !colorWidth ||
+        !value["nearMeters"].IsNumber() || !value["farMeters"].IsNumber() || !value["colorWidth"].IsNumber()) {
+      throw std::runtime_error("rgbd needs layout=color-left-depth-right, nearMeters, farMeters and colorWidth");
+    }
+    rgbd = {true, *nearMeters, *farMeters, *colorWidth};
+    if (!rgbd.IsValid() || LowerAscii(ReadString(json, "projection").value_or("mono")) != "mono") {
+      throw std::runtime_error("RGBD requires mono projection, 2 <= near < far <= 500m, and 0.5 <= colorWidth <= 0.9");
+    }
+    if (ReadBool(json, "followPlayer").value_or(false)) {
+      throw std::runtime_error("RGBD capture must stay world-anchored; followPlayer must be false");
+    }
+    if (!dome.material->HasProperty(s_propRgbdColorWidth) ||
+        !dome.material->HasProperty(s_propDepthWrite)) {
+      throw std::runtime_error("RGBD requires the matching Nexora 0.3.4 Android shader bundle");
+    }
+  }
+  // Reject bad metadata before stopping the previous decoder or changing mesh
+  // mode; an invalid event cannot leave a mismatched RGB/RGBD state behind.
   StopVideo(dome);
+  bool const previousRgbd = dome.rgbd.enabled;
+  bool const previousFollow = dome.followPlayer;
+  dome.rgbd.enabled = false;
+  if (rgbd.enabled) dome.visual.projection = 0.0f;
   ApplyDomeJson(dome.visual, dome, json);
+  if (previousRgbd != rgbd.enabled) {
+    int const resolution = GetDomeResolution();
+    auto* replacement = CreateProceduralDomeMesh(
+        rgbd.enabled ? kRgbdRings : resolution,
+        rgbd.enabled ? kRgbdSegments : resolution, 1.0f);
+    if (!Alive(replacement)) throw std::runtime_error("could not create RGB/RGBD projection mesh");
+    auto* previous = dome.mesh;
+    dome.filter->set_sharedMesh(replacement);
+    dome.mesh = replacement;
+    if (Alive(previous)) UnityEngine::Object::Destroy(previous);
+  }
+  dome.rgbd = rgbd;
+  if (rgbd.enabled) {
+    dome.followPlayer = false;
+    dome.material->EnableKeyword(u"NEXORA_RGBD_ON");
+    // Vertex texture displacement is invisible to Unity's CPU bounds. Include
+    // the authored far radius plus the existing dome deformation envelope.
+    float const diameter = rgbd.farMeters * 4.0f;
+    dome.mesh->set_bounds(UnityEngine::Bounds(UnityEngine::Vector3::get_zero(),
+        UnityEngine::Vector3(diameter, diameter, diameter)));
+    PaperLogger.info("Nexora RGBD '{}' enabled: range={}..{}m colorWidth={} mesh={}x{} oneDecoder=true",
+                     dome.id, rgbd.nearMeters, rgbd.farMeters, rgbd.colorWidth,
+                     kRgbdSegments, kRgbdRings);
+  } else {
+    dome.material->DisableKeyword(u"NEXORA_RGBD_ON");
+    dome.followPlayer = ReadBool(json, "followPlayer").value_or(previousRgbd ? true : previousFollow);
+  }
   if (animationArrivedFirst) {
     // CJD does not promise a stable callback order for equal-beat custom
     // events. Dynasty authors LoadVideo(opacity=0) and AnimateDome(opacity=1)
@@ -1547,10 +1631,13 @@ void Runtime::ApplyDomeJson(DomeVisual& visual, DomeLayer& dome,
   assign("swapEyes", visual.swapEyes, 0.0f, 1.0f);
   if (auto tint = ReadColor(json, "tint"); tint.has_value()) visual.tint = *tint;
   if (auto offset = ReadVector3(json, "offset"); offset.has_value()) dome.offset = *offset;
-  dome.followPlayer = ReadBool(json, "followPlayer").value_or(dome.followPlayer);
+  dome.followPlayer = !dome.rgbd.enabled && ReadBool(json, "followPlayer").value_or(dome.followPlayer);
 
   if (auto projection = ReadString(json, "projection"); projection.has_value()) {
     auto const normalizedProjection = LowerAscii(*projection);
+    if (dome.rgbd.enabled && normalizedProjection != "mono") {
+      throw std::runtime_error("cannot switch RGBD video to a stereo-packed projection");
+    }
     if (normalizedProjection == "topbottom" || normalizedProjection == "overunder" ||
         normalizedProjection == "tb" || normalizedProjection == "ou") {
       visual.projection = 1.0f;
@@ -1620,13 +1707,29 @@ void Runtime::ApplyDomeVisual(DomeLayer& dome) {
   dome.material->SetFloat(s_propCameraSwirl, camera.swirl);
   dome.material->SetFloat(s_propCameraKaleidoscope, camera.kaleidoscope);
   dome.material->SetColor(s_propCameraTint, camera.tint);
+  // An inactive camera effect must not still execute its distortion/noise
+  // arithmetic. Neutral video needs only one RGB lookup, not three lookups.
+  bool const simple = (!cameraEnabled || camera.amount == 0.0f) &&
+      value.hueShift == 0.0f && value.saturation == 1.0f &&
+      value.kaleidoscope <= 1.0f && value.ripple == 0.0f &&
+      value.pixelate == 0.0f && value.chromatic == 0.0f &&
+      value.scanline == 0.0f && value.vignette == 0.0f && value.fog == 0.0f;
+  dome.material->SetFloat(s_propSimpleSampling, simple ? 1.0f : 0.0f);
+  dome.material->SetFloat(s_propRawSampling, GetDirectVideoRenderingEnabled() ? 1.0f : 0.0f);
+  dome.material->SetFloat(s_propRgbdNear, dome.rgbd.nearMeters);
+  dome.material->SetFloat(s_propRgbdFar, dome.rgbd.farMeters);
+  dome.material->SetFloat(s_propRgbdColorWidth, dome.rgbd.colorWidth);
+  // A partially faded video must not write invisible occluders into gameplay.
+  dome.material->SetFloat(s_propDepthWrite,
+      dome.rgbd.enabled && value.opacity * value.tint.a >= 0.999f ? 1.0f : 0.0f);
 
   auto transformReference = dome.object->get_transform();
   auto* transform = transformReference.unsafePtr();
   if (Alive(transform)) {
-    transform->set_localScale(UnityEngine::Vector3(value.radius * value.scaleX,
-                                                    value.radius * value.scaleY,
-                                                    value.radius * value.scaleZ));
+    float const radius = dome.rgbd.enabled ? 1.0f : value.radius;
+    transform->set_localScale(UnityEngine::Vector3(radius * value.scaleX,
+                                                    radius * value.scaleY,
+                                                    radius * value.scaleZ));
     transform->set_rotation(UnityEngine::Quaternion::Euler(value.pitch, value.yaw,
                                                             value.roll));
   }
@@ -1967,6 +2070,7 @@ void Runtime::OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
         if (s_propVideoReady != 0) dome.material->SetFloat(s_propVideoReady, 1.0f);
       }
       if (Alive(dome.renderer)) {
+        if (firstFrame) dome.renderer->SetPropertyBlock(nullptr);
         dome.renderer->set_enabled(dome.visual.opacity > 0.001f);
       }
 

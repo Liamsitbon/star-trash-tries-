@@ -1,7 +1,26 @@
-# Nexora 0.3.1 — Beat Saber Quest
+# Nexora 0.3.5 — Direct Video RC for Beat Saber Quest
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.
+
+## Direct Video release limitation
+
+This release enables `directVideoRendering=true` by default, including upgrades
+whose old `rawVideoDiagnostic` value is false. It uses the direct fragment path
+the user confirmed visible on Quest 3S with 0.3.4. The shader bundle is unchanged
+from that test; this does not establish that every feature or map works.
+
+**Nexora fragment color/UV effects are temporarily bypassed:** brightness,
+RGB tint, exposure, hue, saturation, ripple, fog, scanlines, vignette,
+pixelation, chromatic split, kaleidoscope and Nexora's shader camera effects.
+Opacity/fades, mono/stereo projection, orientation, decoder/song timing, dome
+transforms and vertex deformation remain active. Independent Vivify effects,
+custom notes and custom sabers are not disabled by this setting.
+
+This is a visible-video workaround, not a completed root-cause correction.
+For diagnostic comparison only, set both `directVideoRendering=false` and
+`rawVideoDiagnostic=false` in Nexora's config and restart Beat Saber; the
+normal effects path is still known to produce white on the tested device.
 
 ## Fixed architecture
 
@@ -20,7 +39,7 @@ This preserves Nexora's purpose: expensive Vivify scenery is pre-rendered to
 video, not rebuilt as full live 3D. Notes, sabers and selected interactive
 Vivify camera/gameplay effects can remain live and separate.
 
-## Runtime features
+## Implemented features (subject to the Direct Video limitation above)
 
 - Mono, over/under and side-by-side stereo equirectangular projection.
 - Up to 1–6 layers (three by default), preloading and cross-fades.
@@ -33,10 +52,12 @@ Vivify camera/gameplay effects can remain live and separate.
   attaches a framebuffer `OnRenderImage` component, avoiding the known
   Single-Pass Multiview compositor-freeze path and keeping Nexora independent
   from Vivify's render pipeline.
-- Unity owns Android video decoding and material binding inside Beat Saber's
-  Vulkan renderer. A symmetric procedural safety backdrop remains visible
-  until a real decoded `frameReady` callback replaces it, so maps that disable
-  the stock environment do not collapse into a black world on decoder failure.
+- Unity decodes Android video into a Nexora-owned 2D RenderTexture for GLES3
+  or Vulkan. The dome is revealed only after a decoded frame; there is no
+  fabricated safety backdrop hiding a decoder/rendering failure.
+- Experimental, opt-in packed RGBD reconstructs a depth-writing surface from
+  authored radial depth using one decoder. An RGB-only MP4 does not acquire
+  missing depth automatically. See `../../docs/nexora-rgbd-preview.md`.
 
 ## Map example
 
@@ -88,7 +109,7 @@ python3 ./scripts/package_qmod.py
 python3 ./scripts/package_source.py
 ```
 
-Output: `release/Nexora-Quest-0.3.1.qmod`. The package script requires a real
+Output: `release/Nexora-Quest-0.3.5.qmod`. The package script requires a real
 Android UnityFS shader bundle, matching Unity-source provenance, AArch64 ELF
 shared object, an exact manifest/payload contract and a clean ZIP without PC or
 macOS payloads.

@@ -42,8 +42,8 @@ jobs:
             build: bash scripts/build.sh
             package: python3 scripts/package_qmod.py
             check: python3 scripts/validate_contract.py
-            qmod: release/Nexora-Quest-0.3.3.qmod
-            release_name: Nexora-Quest-0.3.3.qmod
+            qmod: release/Nexora-Quest-0.3.5.qmod
+            release_name: Nexora-Quest-0.3.5.qmod
           - name: Vivify
             project: Vivify/Current-Source
             build: pwsh -NoProfile -File scripts/build.ps1 -clean

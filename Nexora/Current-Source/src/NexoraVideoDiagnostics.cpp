@@ -97,6 +97,14 @@ void Runtime::CapturePausedVideoDiagnostics() {
             material->GetFloat(u"_Brightness"), material->GetFloat(u"_Exposure"),
             tint.r, tint.g, tint.b, tint.a, scale.x, scale.y, offset.x, offset.y,
             material->get_renderQueue());
+        PaperLogger.info(
+            "Nexora video diagnostic draw dome='{}' raw={} simple={} rgbd={} "
+            "renderMode={} decoderRenderer={} domeRenderer={} depthWrite={}",
+            dome.id, material->GetFloat(u"_RawSampling"),
+            material->GetFloat(u"_SimpleSampling"), dome.rgbd.enabled,
+            dome.video->get_renderMode().value__,
+            ObjectId(dome.video->get_gameObject()->GetComponent<UnityEngine::Renderer*>()),
+            ObjectId(dome.renderer), material->GetFloat(u"_DepthWrite"));
       }
 
       constexpr int patchSize = 8;

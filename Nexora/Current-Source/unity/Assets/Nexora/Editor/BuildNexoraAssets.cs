@@ -26,10 +26,12 @@ namespace Nexora.Editor
             if (shader.name != "Nexora/VideoDome") return;
             var multiview = new ShaderKeyword("STEREO_MULTIVIEW_ON");
             var instancing = new ShaderKeyword("STEREO_INSTANCING_ON");
+            var rgbd = new ShaderKeyword(shader, "NEXORA_RGBD_ON");
             foreach (var platform in variants.GroupBy(value => value.shaderCompilerPlatform))
                 Debug.Log($"NEXORA_SHADER_COMPILE platform={platform.Key} stage={snippet.shaderType} " +
                     $"variants={platform.Count()} multiview={platform.Count(value => value.shaderKeywordSet.IsEnabled(multiview))} " +
-                    $"stereoInstanced={platform.Count(value => value.shaderKeywordSet.IsEnabled(instancing))}");
+                    $"stereoInstanced={platform.Count(value => value.shaderKeywordSet.IsEnabled(instancing))} " +
+                    $"rgbd={platform.Count(value => value.shaderKeywordSet.IsEnabled(rgbd))}");
         }
     }
 

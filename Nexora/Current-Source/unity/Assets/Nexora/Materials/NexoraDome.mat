@@ -45,6 +45,7 @@ Material:
     - _DeformAmplitude: 0
     - _DeformFrequency: 3
     - _DeformSpeed: 1
+    - _DepthWrite: 0
     - _DstBlend: 10
     - _Exposure: 0
     - _FlipX: 0
@@ -57,11 +58,16 @@ Material:
     - _Pixelate: 0
     - _ProjectionMode: 0
     - _Pulse: 0
+    - _RawSampling: 0
+    - _RgbdColorWidth: 0.8
+    - _RgbdFar: 100
+    - _RgbdNear: 2
     - _RippleAmount: 0
     - _RippleFrequency: 8
     - _RippleSpeed: 1
     - _Saturation: 1
     - _Scanline: 0
+    - _SimpleSampling: 1
     - _SrcBlend: 5
     - _SwapEyes: 0
     - _Twist: 0

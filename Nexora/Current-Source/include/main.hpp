@@ -16,6 +16,8 @@ void InstallNexoraFileLogSink();
 bool GetNexoraEnabled();
 bool GetFileLoggingEnabled();
 bool GetDebugLoggingEnabled();
+bool GetRawVideoDiagnosticEnabled();
+bool GetDirectVideoRenderingEnabled();
 bool GetCameraEffectsEnabled();
 int GetMaxLayers();
 float GetSyncToleranceSeconds();

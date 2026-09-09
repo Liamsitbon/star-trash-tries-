@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "NexoraLifecycle.hpp"
+#include "RgbdVideo.hpp"
 #include "GlobalNamespace/AudioTimeSyncController.hpp"
 #include "GlobalNamespace/BeatmapCallbacksController.hpp"
 #include "UnityEngine/AssetBundle.hpp"
@@ -121,6 +122,7 @@ struct Animation {
 struct DomeLayer {
   std::string id;
   UnityEngine::GameObject* object = nullptr;
+  UnityEngine::GameObject* decoderObject = nullptr;
   UnityEngine::MeshFilter* filter = nullptr;
   UnityEngine::Mesh* mesh = nullptr;
   UnityEngine::Renderer* renderer = nullptr;
@@ -132,6 +134,7 @@ struct DomeLayer {
   UnityEngine::Video::VideoPlayer_EventHandler* seekCompletedDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_ErrorEventHandler* errorReceivedDelegate = nullptr;
   DomeVisual visual{};
+  RgbdVideo rgbd{};
   Animation<DomeVisual> animation{};
   UnityEngine::Vector3 offset = UnityEngine::Vector3::get_zero();
   bool followPlayer = true;

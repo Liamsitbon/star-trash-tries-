@@ -1,0 +1,108 @@
+name: Release Nexora Direct Video
+
+on:
+  push:
+    tags:
+      - "nexora-quest-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing nexora-quest-* tag to build and release
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nexora-release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate tag and package version
+        id: package
+        run: |
+          case "$RELEASE_TAG" in nexora-quest-*) ;; *) exit 1 ;; esac
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          version="$(python3 -c 'import json; print(json.load(open("Nexora/Current-Source/mod.json"))["version"])')"
+          case "$RELEASE_TAG" in "nexora-quest-$version-"*) ;; *) exit 1 ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build unzip file ripgrep
+
+      - name: Restore Quest dependencies
+        uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: Nexora/Current-Source
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: false
+
+      - name: Host lifecycle, rendering policy and interoperability tests
+        run: |
+          bash Nexora/Current-Source/scripts/test_host.sh
+          python3 tests/interop_contract_check.py
+
+      - name: Build and package Nexora ARM64
+        working-directory: Nexora/Current-Source
+        run: |
+          bash scripts/build.sh
+          python3 scripts/package_qmod.py
+          python3 scripts/validate_contract.py
+
+      - name: Stage package and matching tagged source
+        env:
+          MOD_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          mkdir -p dist
+          qmod="Nexora-Quest-$MOD_VERSION.qmod"
+          cp "Nexora/Current-Source/release/$qmod" "dist/$qmod"
+          unzip -tq "dist/$qmod"
+          if unzip -Z1 "dist/$qmod" | grep -Eiq '\.(dll|exe|dylib|pdb)$|__MACOSX|(^|/)\._|(^|/)\.DS_Store'; then
+            echo "Non-Quest payload or macOS metadata found" >&2
+            exit 1
+          fi
+          unzip -p "dist/$qmod" libNexora.so | file - | grep -E 'ELF 64-bit.*ARM aarch64'
+          git archive --format=tar.gz --prefix="star-trash-tries-$RELEASE_TAG/" \
+            -o "dist/star-trash-tries-$RELEASE_TAG-source.tar.gz" HEAD
+          (cd dist && sha256sum *.qmod *.tar.gz > SHA256SUMS)
+
+      - name: Preserve build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nexora-direct-video-${{ steps.package.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish release candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOD_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Nexora $MOD_VERSION — Direct Video RC · Quest 1.40.8_7379" \
+              --notes-file docs/releases/2026-09-09-nexora-direct-video.md \
+              --prerelease
+          fi
