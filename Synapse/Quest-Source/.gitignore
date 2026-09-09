@@ -1,0 +1,4 @@
+/build*/
+/tests/dotnet/bin/
+/tests/dotnet/obj/
+__pycache__/

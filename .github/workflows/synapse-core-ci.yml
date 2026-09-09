@@ -1,0 +1,17 @@
+name: Synapse portable Quest core (not a QMOD)
+on:
+  push:
+    branches: [synapse-quest-port]
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile portable core and run bounded protocol tests
+        working-directory: Synapse/Quest-Source
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure
