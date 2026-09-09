@@ -27,7 +27,7 @@ int main(int argc,char**) {
     golden("long-string",Writer(ToServer::ChatMessage).String(std::string(300,'x')).Finish());
     return 0;
   }
-  Reader reader(std::span(auth).subspan(2));
+  Reader reader{std::span(auth).subspan(2)};
   assert(reader.Byte()==0 && reader.String()=="123456" && reader.String()=="שלום 🦋");
   assert(reader.Byte()==1 && reader.String()=="synthetic-test-token");
   assert(reader.String()=="1.40.8_7379" && reader.String()=="test-listing"); reader.End();
