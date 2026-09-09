@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_VERSION = "0.3.5"
+MOD_VERSION = "2.0.0-alpha.1"
 TARGET = "1.40.8_7379"
 UNITY_VERSION = "2021.3.16f1"
 OUTPUT = ROOT / "release" / f"Nexora-Quest-{MOD_VERSION}.qmod"

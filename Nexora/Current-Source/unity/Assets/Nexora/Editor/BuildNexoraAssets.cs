@@ -39,6 +39,7 @@ namespace Nexora.Editor
     {
         private const string DomeShaderPath = "Assets/Nexora/Shaders/NexoraDome.shader";
         private const string DomeMaterialPath = "Assets/Nexora/Materials/NexoraDome.mat";
+        private const string WarmupPath = "Assets/Nexora/Materials/NexoraWarmup.shadervariants";
 
         [Serializable]
         private sealed class BundleProvenance
@@ -149,6 +150,20 @@ namespace Nexora.Editor
             }
             material.enableInstancing = true;
             EditorUtility.SetDirty(material);
+            var warmup = AssetDatabase.LoadAssetAtPath<ShaderVariantCollection>(WarmupPath);
+            if (warmup == null) {
+                warmup = new ShaderVariantCollection();
+                AssetDatabase.CreateAsset(warmup, WarmupPath);
+            }
+            warmup.Clear();
+            foreach (var stereo in new[] { "", "STEREO_MULTIVIEW_ON", "STEREO_INSTANCING_ON" })
+                foreach (var depth in new[] { false, true }) {
+                    var keywords = new List<string>();
+                    if (stereo.Length > 0) keywords.Add(stereo);
+                    if (depth) keywords.Add("NEXORA_RGBD_ON");
+                    warmup.Add(new ShaderVariantCollection.ShaderVariant(shader, PassType.Normal, keywords.ToArray()));
+                }
+            EditorUtility.SetDirty(warmup);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
@@ -162,7 +177,7 @@ namespace Nexora.Editor
                 new AssetBundleBuild
                 {
                     assetBundleName = "nexoraassets.android",
-                    assetNames = new[] { DomeMaterialPath, DomeShaderPath }
+                    assetNames = new[] { DomeMaterialPath, DomeShaderPath, WarmupPath }
                 }
             };
             var manifest = BuildPipeline.BuildAssetBundles(
@@ -209,7 +224,7 @@ namespace Nexora.Editor
                 provenancePath, JsonUtility.ToJson(provenance, true) + "\n",
                 new UTF8Encoding(false));
             Debug.Log(
-                $"NEXORA_ASSET_BUNDLE_OK path={destination} bytes={bytes} assets=2 " +
+                $"NEXORA_ASSET_BUNDLE_OK path={destination} bytes={bytes} assets=3 " +
                 $"sha256={provenance.bundleSha256} provenance={provenancePath}");
         }
     }

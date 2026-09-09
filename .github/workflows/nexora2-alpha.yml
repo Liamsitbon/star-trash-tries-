@@ -1,0 +1,53 @@
+name: Nexora 2 experimental Alpha
+on:
+  push:
+    branches: [nexora-2-alpha]
+    tags: [nexora2-alpha-*]
+permissions:
+  contents: write
+concurrency:
+  group: nexora2-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  alpha:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build tools
+        run: sudo apt-get update && sudo apt-get install --yes cmake ninja-build unzip file ripgrep
+      - uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: Nexora/Current-Source
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: false
+      - name: Tests, native build and matching asset provenance
+        working-directory: Nexora/Current-Source
+        run: |
+          bash scripts/test_host.sh
+          python3 tests/test_rgbd_pack.py
+          python3 scripts/validate_contract.py
+          bash scripts/build.sh
+          python3 scripts/package_qmod.py
+      - name: Package exact source
+        run: |
+          mkdir -p dist
+          cp Nexora/Current-Source/release/Nexora-Quest-2.0.0-alpha.1.qmod dist/
+          git archive --format=tar.gz --prefix=nexora2-alpha/ -o dist/nexora2-alpha-source.tar.gz HEAD
+          (cd dist && sha256sum *.qmod *.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nexora2-experimental
+          path: dist/*
+      - name: Tagged Alpha prerelease only, never latest
+        if: startsWith(github.ref, 'refs/tags/nexora2-alpha-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALPHA_TAG: ${{ github.ref_name }}
+        run: |
+          test "$ALPHA_TAG" = "nexora2-alpha-2.0.0-alpha.1"
+          gh release create "$ALPHA_TAG" dist/* --verify-tag --prerelease --latest=false \
+            --title "Nexora 2.0 Alpha 1 — EXPERIMENTAL · Nexora 0.3.5 remains recommended" \
+            --notes-file docs/nexora2-alpha.md

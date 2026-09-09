@@ -25,8 +25,9 @@ if(CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
   add_compile_options(-g)
 endif()
 
-project(Nexora VERSION ${MOD_VERSION})
-add_compile_definitions(MOD_ID="nexora" MOD_NAME="Nexora" VERSION="${CMAKE_PROJECT_VERSION}")
+string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" NEXORA_NUMERIC_VERSION "${MOD_VERSION}")
+project(Nexora VERSION ${NEXORA_NUMERIC_VERSION})
+add_compile_definitions(MOD_ID="nexora" MOD_NAME="Nexora" VERSION="${MOD_VERSION}")
 set(COMPILE_ID ${CMAKE_PROJECT_NAME})
 
 RECURSE_FILES(cpp_file_list ${SOURCE_DIR}/*.cpp)

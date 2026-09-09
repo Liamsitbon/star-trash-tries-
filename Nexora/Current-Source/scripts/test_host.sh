@@ -37,3 +37,9 @@ echo "Nexora opt-in RGBD layout test passed"
   -o "$NEXORA_TEST_DIR/video_render_policy_test"
 "$NEXORA_TEST_DIR/video_render_policy_test"
 echo "Nexora direct-video default and diagnostic override policy test passed"
+
+"$NEXORA_HOST_CXX" -std=c++20 -Wall -Wextra -Werror -pedantic \
+  -I"$NEXORA_ROOT/include" "$NEXORA_ROOT/tests/depth_projection_test.cpp" \
+  -o "$NEXORA_TEST_DIR/depth_projection_test"
+"$NEXORA_TEST_DIR/depth_projection_test"
+echo "Nexora 2 region depth, quality and capture-pose tests passed"

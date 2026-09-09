@@ -1,4 +1,9 @@
-# Nexora 0.3.5 — Direct Video RC for Beat Saber Quest
+# Nexora 2.0 Alpha — experimental Quest prototype
+
+**Nexora 0.3.5 remains recommended.** This branch is an experimental replacement,
+not a second mod to install alongside it. Headset validation is pending.
+See [Alpha contract and evidence](https://github.com/Liamsitbon/star-trash-tries-/blob/nexora-2-alpha/docs/nexora2-alpha.md) for depth,
+startup preparation, fallback, quality levels and known limits.
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.

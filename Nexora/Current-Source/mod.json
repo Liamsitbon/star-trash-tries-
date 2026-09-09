@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/refs/heads/main/QuestPatcher.QMod/Resources/qmod.schema.json",
   "_QPVersion": "1.2.0",
-  "name": "Nexora",
+  "name": "Nexora 2 Alpha (Experimental)",
   "id": "nexora",
   "modloader": "Scotland2",
   "author": "Liam Sitbon",
-  "version": "0.3.5",
+  "version": "2.0.0-alpha.1",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Quest 360 video worlds. Direct Video RC: visible-video path enabled by default; Nexora fragment color/UV effects temporarily bypassed. Song sync, projection, opacity and independent Vivify effects remain enabled.",
+  "description": "EXPERIMENTAL replacement, not a second co-installed mod. Nexora 0.3.5 remains recommended. Menu video prewarm and optional packed RGBD regional parallax. Quest runtime validation pending.",
   "dependencies": [
     {
       "version": "^6.4.2",

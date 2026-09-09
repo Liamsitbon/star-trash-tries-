@@ -60,8 +60,11 @@ Material:
     - _Pulse: 0
     - _RawSampling: 0
     - _RgbdColorWidth: 0.8
+    - _RgbdEdgeRepair: 1
     - _RgbdFar: 100
     - _RgbdNear: 2
+    - _RgbdStrength: 1
+    - _RgbdWorldScale: 1
     - _RippleAmount: 0
     - _RippleFrequency: 8
     - _RippleSpeed: 1
@@ -75,5 +78,6 @@ Material:
     - _Vignette: 0
     m_Colors:
     - _CameraTint: {r: 1, g: 1, b: 1, a: 1}
+    - _RgbdHead: {r: 0, g: 0, b: 0, a: 0}
     - _Tint: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []

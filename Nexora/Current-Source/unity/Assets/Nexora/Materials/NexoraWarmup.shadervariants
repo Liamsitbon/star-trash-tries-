@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!200 &20000000
+ShaderVariantCollection:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: NexoraWarmup
+  m_Shaders:
+  - first: {fileID: 4800000, guid: 21640073a06aa44dc8b307a09bc168e4, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: NEXORA_RGBD_ON
+        passType: 0
+      - keywords: NEXORA_RGBD_ON STEREO_INSTANCING_ON
+        passType: 0
+      - keywords: NEXORA_RGBD_ON STEREO_MULTIVIEW_ON
+        passType: 0
+      - keywords: STEREO_INSTANCING_ON
+        passType: 0
+      - keywords: STEREO_MULTIVIEW_ON
+        passType: 0

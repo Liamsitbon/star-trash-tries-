@@ -118,6 +118,27 @@ namespace Nexora.Editor
                 var noDepthWrite = capture()[center];
                 if (near.b < 0.9f || near.g > 0.1f || far.g < 0.9f || noDepthWrite.g < 0.9f)
                     throw new InvalidOperationException($"RGBD occlusion A/B failed: near={near}, far={far}, noWrite={noDepthWrite}");
+                cube.SetActive(false);
+                video.SetFloat("_RawSampling", 1);
+                video.SetFloat("_RgbdEdgeRepair", 0); // This quad is not an equirectangular sphere.
+                Func<Color[],float> centroid = pixels => {
+                    double sum=0, count=0;
+                    for (int i=0;i<pixels.Length;++i)
+                        if (pixels[i].b>.8f && pixels[i].r<.1f) { sum+=i%128; ++count; }
+                    if (count<32) throw new InvalidOperationException("Depth translation probe lost geometry");
+                    return (float)(sum/count);
+                };
+                setDepth(0); var nearOrigin = centroid(capture());
+                setDepth(1); var farOrigin = centroid(capture());
+                camera.transform.position = new Vector3(.15f,0,0);
+                video.SetVector("_RgbdHead",new Vector4(.15f,0,0,0));
+                setDepth(0); var nearShift = Mathf.Abs(centroid(capture())-nearOrigin);
+                setDepth(1); var farShift = Mathf.Abs(centroid(capture())-farOrigin);
+                video.SetFloat("_RgbdStrength",0);
+                var zeroStrengthShift = Mathf.Abs(centroid(capture())-farOrigin);
+                if (nearShift < farShift*2.5f || farShift < .5f || zeroStrengthShift > .6f)
+                    throw new InvalidOperationException($"Depth-dependent translation failed: near={nearShift} far={farShift} zero={zeroStrengthShift}");
+                Debug.Log($"NEXORA_DEPTH_TRANSLATION_OK api={SystemInfo.graphicsDeviceType} nearShiftPixels={nearShift} farShiftPixels={farShift} zeroStrengthPixels={zeroStrengthShift} sphereTransformUnchanged=true questStereoProven=false");
                 Debug.Log($"NEXORA_EDITOR_PROBE_OK api={SystemInfo.graphicsDeviceType} rgbRange={rangeMax-rangeMin} simpleError={simpleError} fullMeanError={fullError} depthNear={near} depthFar={far} depthWriteOff={noDepthWrite} questRuntimeProven=false");
             }
             finally

@@ -9,6 +9,8 @@
 
 #include "NexoraLifecycle.hpp"
 #include "RgbdVideo.hpp"
+#include "CapturePose.hpp"
+#include "PerformanceWindow.hpp"
 #include "GlobalNamespace/AudioTimeSyncController.hpp"
 #include "GlobalNamespace/BeatmapCallbacksController.hpp"
 #include "UnityEngine/AssetBundle.hpp"
@@ -135,6 +137,13 @@ struct DomeLayer {
   UnityEngine::Video::VideoPlayer_ErrorEventHandler* errorReceivedDelegate = nullptr;
   DomeVisual visual{};
   RgbdVideo rgbd{};
+  std::vector<CapturePose> capturePoses;
+  std::string fallbackUrl;
+  bool fallbackRequested = false;
+  bool prewarmed = false;
+  bool persistentRoot = false;
+  double expectedFps = 0;
+  double expectedDuration = 0;
   Animation<DomeVisual> animation{};
   UnityEngine::Vector3 offset = UnityEngine::Vector3::get_zero();
   bool followPlayer = true;
@@ -174,6 +183,7 @@ public:
   void SetApplicationPaused(bool paused);
   void SetFocused(bool focused);
   void SetSelectedMapRoot(std::string mapRoot, bool requiresNexora);
+  void PrewarmSelectedDifficulty(std::string const& characteristic, int difficulty);
   void HandleScenesWillDismiss();
   void HandleGameplayRestart();
   void OnBehaviourDestroyed(RuntimeBehaviour* behaviour);
@@ -221,6 +231,8 @@ private:
   void EnsureVideoTarget(DomeLayer& dome);
   void ReleaseVideoTarget(DomeLayer& dome);
   void FailVideo(DomeLayer& dome);
+  void UpdatePrewarm();
+  void BeginRgbFallback(DomeLayer& dome);
   void CapturePausedVideoDiagnostics();
 
   void ApplyCameraJson(CameraVisual& visual, rapidjson::Value const& json);
@@ -256,16 +268,21 @@ private:
   bool _pendingReset = false;
   bool _pendingResetSceneTransition = false;
   bool _playButtonDisabled = false;
+  std::string _playBlockReason;
   bool _loggedMissingAssets = false;
   bool _loggedQuestSafeCameraEffects = false;
   bool _propertyIdsInitialized = false;
   bool _selectedMapRequiresNexora = false;
   bool _preparingBeatmap = false;
+  bool _menuPrewarming = false;
+  bool _prewarmHardFailure = false;
+  std::string _prewarmSelection;
   int _lastUpdateErrorFrame = -10000;
   int _nextGameplayProbeFrame = -1;
   float _lastSongTime = -1.0f;
   std::string _selectedMapRoot;
   std::unordered_set<CustomJSONData::CustomEventData*> _processedNexoraEvents;
+  PerformanceWindow _performance;
 };
 
 void LateLoad();

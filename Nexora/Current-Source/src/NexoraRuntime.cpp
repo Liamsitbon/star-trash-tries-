@@ -6,9 +6,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <fstream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -39,6 +41,8 @@
 #include "UnityEngine/Video/VideoAudioOutputMode.hpp"
 #include "UnityEngine/Video/VideoRenderMode.hpp"
 #include "UnityEngine/Video/VideoSource.hpp"
+#include "UnityEngine/Vector4.hpp"
+#include "GlobalNamespace/BeatmapCharacteristicSO.hpp"
 #include "GlobalNamespace/BeatmapCallbacksUpdater.hpp"
 #include "custom-json-data/shared/CustomBeatmapData.h"
 #include "songcore/shared/Capabilities.hpp"
@@ -94,6 +98,10 @@ int s_propRgbdNear = 0;
 int s_propRgbdFar = 0;
 int s_propRgbdColorWidth = 0;
 int s_propDepthWrite = 0;
+int s_propRgbdStrength = 0;
+int s_propRgbdWorldScale = 0;
+int s_propRgbdHead = 0;
+int s_propRgbdEdgeRepair = 0;
 
 int s_propCameraAmount = 0;
 int s_propCameraFisheye = 0;
@@ -431,6 +439,10 @@ void Runtime::InitPropertyIds() {
   s_propRgbdFar = UnityEngine::Shader::PropertyToID(u"_RgbdFar");
   s_propRgbdColorWidth = UnityEngine::Shader::PropertyToID(u"_RgbdColorWidth");
   s_propDepthWrite = UnityEngine::Shader::PropertyToID(u"_DepthWrite");
+  s_propRgbdStrength = UnityEngine::Shader::PropertyToID(u"_RgbdStrength");
+  s_propRgbdWorldScale = UnityEngine::Shader::PropertyToID(u"_RgbdWorldScale");
+  s_propRgbdHead = UnityEngine::Shader::PropertyToID(u"_RgbdHead");
+  s_propRgbdEdgeRepair = UnityEngine::Shader::PropertyToID(u"_RgbdEdgeRepair");
   s_propFlipX = UnityEngine::Shader::PropertyToID(StringW("_FlipX"));
   s_propFlipY = UnityEngine::Shader::PropertyToID(StringW("_FlipY"));
   s_propSwapEyes = UnityEngine::Shader::PropertyToID(StringW("_SwapEyes"));
@@ -588,17 +600,25 @@ void Runtime::LateLoad() {
             runtime.SetPlayButtonBlocked(true, failure);
             return;
           }
-          runtime.SetPlayButtonBlocked(false);
+          auto characteristicRef = event.beatmapKey.beatmapCharacteristic;
+          auto* characteristic = characteristicRef.unsafePtr();
+          if (Alive(characteristic)) {
+            runtime.PrewarmSelectedDifficulty(
+                std::string(characteristic->get_serializedName()),
+                static_cast<int>(event.beatmapKey.difficulty));
+          } else runtime.SetPlayButtonBlocked(false);
         } catch (std::exception const& exception) {
           PaperLogger.error("Nexora level-selection callback failed safely: {}",
                             exception.what());
           if (requiresNexora) {
+            runtime._prewarmHardFailure = true;
             runtime.SetPlayButtonBlocked(
                 true, "Nexora could not validate this map safely. Check Nexora.log.");
           }
         } catch (...) {
           PaperLogger.error("Nexora level-selection callback failed safely");
           if (requiresNexora) {
+            runtime._prewarmHardFailure = true;
             runtime.SetPlayButtonBlocked(
                 true, "Nexora could not validate this map safely. Check Nexora.log.");
           }
@@ -617,16 +637,17 @@ void Runtime::LateLoad() {
 }
 
 void Runtime::SetPlayButtonBlocked(bool blocked, std::string reason) {
-  if (_playButtonDisabled == blocked) return;
+  if (_playButtonDisabled == blocked && (!blocked || _playBlockReason == reason)) return;
   try {
     if (blocked) {
       if (reason.empty()) reason = "Nexora is not ready for this map.";
       SongCore::API::PlayButton::DisablePlayButton(std::string(kCapability),
-                                                   std::move(reason));
+                                                   reason);
     } else {
       SongCore::API::PlayButton::EnablePlayButton(std::string(kCapability));
     }
     _playButtonDisabled = blocked;
+    _playBlockReason = std::move(reason);
   } catch (std::exception const& exception) {
     PaperLogger.error("Nexora could not update SongCore's play-button gate: {}",
                       exception.what());
@@ -681,6 +702,8 @@ void Runtime::SetSelectedMapRoot(std::string mapRoot, bool requiresNexora) {
   }
   if (_selectedMapRoot != mapRoot || _selectedMapRequiresNexora != requiresNexora) {
     ResetSession(false);
+    _menuPrewarming = false;
+    _prewarmSelection.clear();
   }
   _selectedMapRoot = std::move(mapRoot);
   _selectedMapRequiresNexora = requiresNexora;
@@ -688,6 +711,97 @@ void Runtime::SetSelectedMapRoot(std::string mapRoot, bool requiresNexora) {
   if (!_selectedMapRoot.empty()) {
     PaperLogger.info("Nexora selected map root='{}' required={}", _selectedMapRoot,
                      _selectedMapRequiresNexora);
+  }
+}
+
+void Runtime::PrewarmSelectedDifficulty(std::string const& characteristic, int difficulty) {
+  auto const key = _selectedMapRoot + "/" + characteristic + "/" + std::to_string(difficulty);
+  if (_prewarmSelection == key && _menuPrewarming) return;
+  ResetSession(false);
+  _menuPrewarming = false;
+  _prewarmSelection = key;
+  _prewarmHardFailure = false;
+  if (_selectedMapRoot.empty()) return;
+  auto read = [&](std::string const& name) {
+    auto root = std::filesystem::canonical(_selectedMapRoot);
+    auto file = std::filesystem::weakly_canonical(root / name);
+    if (!IsPathInside(root, file) || !IsReadableRegularFile(file) ||
+        std::filesystem::file_size(file) > 16*1024*1024)
+      throw std::runtime_error("prewarm DAT path/size is invalid");
+    std::ifstream stream(file, std::ios::binary);
+    std::string text{std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+    rapidjson::Document doc;
+    doc.Parse(text.data(), text.size());
+    if (doc.HasParseError() || !doc.IsObject()) throw std::runtime_error("invalid prewarm JSON");
+    return doc;
+  };
+  auto info = read(std::filesystem::exists(std::filesystem::path(_selectedMapRoot)/"Info.dat") ? "Info.dat" : "info.dat");
+  std::string filename;
+  if (info.HasMember("_difficultyBeatmapSets") && info["_difficultyBeatmapSets"].IsArray()) {
+    for (auto const& set : info["_difficultyBeatmapSets"].GetArray()) {
+      if (!set.IsObject() || ReadString(set,"_beatmapCharacteristicName") != characteristic ||
+          !set.HasMember("_difficultyBeatmaps") || !set["_difficultyBeatmaps"].IsArray()) continue;
+      for (auto const& diff : set["_difficultyBeatmaps"].GetArray()) {
+        if (diff.IsObject() && ReadFloat(diff,"_difficultyRank").value_or(-1) == difficulty*2+1)
+          filename = ReadString(diff,"_beatmapFilename").value_or("");
+      }
+    }
+  }
+  if (filename.empty()) {
+    PaperLogger.warn("Nexora prewarm: no supported V2/V3 selected difficulty; legacy loading retained");
+    SetPlayButtonBlocked(false); return;
+  }
+  auto dat = read(filename);
+  auto* custom = dat.HasMember("customData") ? &dat["customData"] :
+                 dat.HasMember("_customData") ? &dat["_customData"] : nullptr;
+  auto* events = custom && custom->IsObject() && custom->HasMember("customEvents") ? &(*custom)["customEvents"] :
+                 custom && custom->IsObject() && custom->HasMember("_customEvents") ? &(*custom)["_customEvents"] : nullptr;
+  if (!events || !events->IsArray()) { SetPlayButtonBlocked(false); return; }
+  _menuPrewarming = true;
+  EnsureBehaviour();
+  for (auto const& event : events->GetArray()) {
+    if (!event.IsObject()) continue;
+    auto const type = ReadString(event,"t").value_or(ReadString(event,"_type").value_or(""));
+    auto const beat = ReadFloat(event,"b").value_or(ReadFloat(event,"_time").value_or(999));
+    auto* data = event.HasMember("d") ? &event["d"] : event.HasMember("_data") ? &event["_data"] : nullptr;
+    if (type != kLoadVideoEvent || beat > 0.001f || !data || !data->IsObject()) continue;
+    auto* dome = EnsureDome(DomeId(*data));
+    if (!dome) throw std::runtime_error("too many startup videos to prewarm");
+    if (dome->prewarmed) throw std::runtime_error("duplicate startup video id");
+    UnityEngine::Object::DontDestroyOnLoad(dome->object);
+    dome->persistentRoot = true;
+    LoadVideo(*dome, *data, 0);
+    dome->prewarmed = true;
+    dome->pendingPlay = true; // Decode the exact start frame, then pause it.
+    dome->pendingInitialTime = std::max(0.0, static_cast<double>(dome->videoOffset));
+    dome->pendingInitialTimeTracksSong = false;
+    dome->renderer->set_enabled(false);
+  }
+  if (_domes.empty()) {
+    _menuPrewarming = false;
+    SetPlayButtonBlocked(false);
+  } else {
+    SetPlayButtonBlocked(true, "Nexora 2: preparing the first video frame before gameplay.");
+    PaperLogger.info("Nexora prewarm started selected='{}' layers={}", filename, _domes.size());
+  }
+}
+
+void Runtime::UpdatePrewarm() {
+  if (!_focused || _applicationPaused || _prewarmHardFailure) return;
+  bool ready = !_domes.empty();
+  bool failed = false;
+  float now = UnityEngine::Time::get_realtimeSinceStartup();
+  for (auto& [_, dome] : _domes) {
+    UpdateVideo(dome, 0, now);
+    if (Alive(dome.renderer)) dome.renderer->set_enabled(false);
+    ready &= dome.textureBound && !dome.prepareFailed;
+    failed |= dome.prepareFailed;
+  }
+  if (ready && _playButtonDisabled) {
+    SetPlayButtonBlocked(false);
+    PaperLogger.info("Nexora prewarm READY: decoded textures retained; gameplay has not started");
+  } else if (failed) {
+    SetPlayButtonBlocked(true, "Nexora could not decode the startup video. See Nexora.log; reselect to retry.");
   }
 }
 
@@ -763,6 +877,13 @@ void Runtime::LoadAssets() {
     if (Alive(_domeShader) && _domeShader->get_name() == u"Nexora/VideoDome" &&
         _domeShader->get_isSupported()) {
       _loggedMissingAssets = false;
+      auto warmAsset = _assetBundle->LoadAsset(u"assets/nexora/materials/nexorawarmup.shadervariants");
+      // The game codegen omits this Unity type. A missing stripped WarmUp method
+      // is reported, not invoked through an invented native address.
+      if (Alive(warmAsset.unsafePtr())) {
+        auto warmed = il2cpp_utils::RunMethodOpt<void>(warmAsset.unsafePtr(), "WarmUp");
+        PaperLogger.info("Nexora targeted shader variant warmup available={}", warmed.has_value());
+      }
       PaperLogger.info("Nexora dome shader ready: '{}'", _domeShader->get_name());
     } else {
       if (!_loggedMissingAssets) {
@@ -910,7 +1031,8 @@ void Runtime::BeginSession(
       (_lifecycle.IsActive() || _lifecycle.IsSuspended())) {
     return;
   }
-  ResetSession(false);
+  if (!_menuPrewarming) ResetSession(false);
+  _menuPrewarming = false;
   EnsureBehaviour();
   InitPropertyIds();
   _callbackController = callbackController;
@@ -1362,10 +1484,16 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
   // RGBD is a per-media opt-in: never interpret an ordinary RGB file as depth,
   // and never retain a previous video's depth layout on a later LoadVideo.
   RgbdVideo rgbd;
+  std::vector<CapturePose> poses;
+  std::string url = ResolveMediaUrl(json);
+  std::string fallbackUrl;
   auto const depth = json.FindMember("rgbd");
   if (depth != json.MemberEnd()) {
+    try {
     if (!depth->value.IsObject()) throw std::runtime_error("rgbd must be an object");
     auto const& value = depth->value;
+    if (ReadString(value,"encoding").value_or("linear-radial-meters-code") != "linear-radial-meters-code")
+      throw std::runtime_error("unsupported depth encoding: radial, not camera-Z/inverse depth, required");
     auto const layout = ReadString(value, "layout");
     auto const nearMeters = ReadFloat(value, "nearMeters");
     auto const farMeters = ReadFloat(value, "farMeters");
@@ -1375,6 +1503,10 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
       throw std::runtime_error("rgbd needs layout=color-left-depth-right, nearMeters, farMeters and colorWidth");
     }
     rgbd = {true, *nearMeters, *farMeters, *colorWidth};
+    rgbd.strength = ReadFloat(value,"strength").value_or(1);
+    rgbd.worldScale = ReadFloat(value,"worldScale").value_or(1);
+    auto quality = ReadString(value,"quality").value_or("balanced");
+    rgbd.quality = quality == "low" ? 0 : quality == "balanced" ? 1 : quality == "high" ? 2 : -1;
     if (!rgbd.IsValid() || LowerAscii(ReadString(json, "projection").value_or("mono")) != "mono") {
       throw std::runtime_error("RGBD requires mono projection, 2 <= near < far <= 500m, and 0.5 <= colorWidth <= 0.9");
     }
@@ -1385,20 +1517,55 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
         !dome.material->HasProperty(s_propDepthWrite)) {
       throw std::runtime_error("RGBD requires the matching Nexora 0.3.4 Android shader bundle");
     }
+    if (ReadString(value, "media")) {
+      // Version 2 keeps an independent RGB-only file as a true decoder fallback.
+      fallbackUrl = url;
+      url = ResolveMediaUrl(value);
+      if (url == fallbackUrl) throw std::runtime_error("RGB fallback and packed RGBD must be different files");
+    }
+    if (value.HasMember("capturePoses")) {
+      auto const& list = value["capturePoses"];
+      if (!list.IsArray() || list.Size() > 16384) throw std::runtime_error("capturePoses must be a bounded array");
+      poses.reserve(list.Size());
+      for (auto const& entry : list.GetArray()) {
+        if (!entry.IsObject() || !entry.HasMember("time") || !entry["time"].IsNumber() ||
+            !entry.HasMember("position") || !entry["position"].IsArray() || entry["position"].Size()!=3 ||
+            !entry.HasMember("rotation") || !entry["rotation"].IsArray() || entry["rotation"].Size()!=4)
+          throw std::runtime_error("invalid capture pose structure");
+        CapturePose pose; pose.time=entry["time"].GetDouble();
+        for (int i=0;i<3;++i) { if (!entry["position"][i].IsNumber()) throw std::runtime_error("pose position must be numeric"); pose.position[i]=entry["position"][i].GetFloat(); }
+        for (int i=0;i<4;++i) { if (!entry["rotation"][i].IsNumber()) throw std::runtime_error("pose rotation must be numeric"); pose.rotation[i]=entry["rotation"][i].GetFloat(); }
+        poses.push_back(pose);
+      }
+      if (!ValidCapturePoses(poses)) throw std::runtime_error("capture poses must be finite, time-sorted and normalized");
+    }
+    } catch (std::exception const& error) {
+      // The v2 independent RGB source is authoritative, including missing packed media.
+      if (!depth->value.IsObject() || !ReadString(depth->value, "media")) throw;
+      PaperLogger.warn("Nexora RGBD rejected; using RGB-only media: {}", error.what());
+      rgbd = {}; poses.clear(); fallbackUrl.clear(); url = ResolveMediaUrl(json);
+    }
   }
   // Reject bad metadata before stopping the previous decoder or changing mesh
   // mode; an invalid event cannot leave a mismatched RGB/RGBD state behind.
-  StopVideo(dome);
+  if (dome.prewarmed && dome.textureBound && !dome.rgbd.enabled && !fallbackUrl.empty() &&
+      std::string(dome.video->get_url()) == fallbackUrl) {
+    url = fallbackUrl; fallbackUrl.clear(); rgbd = {}; poses.clear();
+  }
+  bool const reusePrewarm = dome.prewarmed && dome.textureBound &&
+      dome.video->get_isPrepared() && std::string(dome.video->get_url()) == url;
+  dome.prewarmed = false;
+  if (!reusePrewarm) StopVideo(dome);
   bool const previousRgbd = dome.rgbd.enabled;
   bool const previousFollow = dome.followPlayer;
   dome.rgbd.enabled = false;
   if (rgbd.enabled) dome.visual.projection = 0.0f;
   ApplyDomeJson(dome.visual, dome, json);
-  if (previousRgbd != rgbd.enabled) {
+  if (previousRgbd != rgbd.enabled || (rgbd.enabled && dome.rgbd.quality != rgbd.quality)) {
     int const resolution = GetDomeResolution();
     auto* replacement = CreateProceduralDomeMesh(
-        rgbd.enabled ? kRgbdRings : resolution,
-        rgbd.enabled ? kRgbdSegments : resolution, 1.0f);
+        rgbd.enabled ? rgbd.Rings() : resolution,
+        rgbd.enabled ? rgbd.Segments() : resolution, 1.0f);
     if (!Alive(replacement)) throw std::runtime_error("could not create RGB/RGBD projection mesh");
     auto* previous = dome.mesh;
     dome.filter->set_sharedMesh(replacement);
@@ -1406,17 +1573,22 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
     if (Alive(previous)) UnityEngine::Object::Destroy(previous);
   }
   dome.rgbd = rgbd;
+  dome.capturePoses = std::move(poses);
+  dome.fallbackUrl = fallbackUrl;
+  dome.fallbackRequested = false;
+  dome.expectedFps = rgbd.enabled ? ReadFloat(depth->value,"fps").value_or(0) : 0;
+  dome.expectedDuration = rgbd.enabled ? ReadFloat(depth->value,"durationSeconds").value_or(0) : 0;
   if (rgbd.enabled) {
     dome.followPlayer = false;
     dome.material->EnableKeyword(u"NEXORA_RGBD_ON");
     // Vertex texture displacement is invisible to Unity's CPU bounds. Include
     // the authored far radius plus the existing dome deformation envelope.
-    float const diameter = rgbd.farMeters * 4.0f;
+    float const diameter = rgbd.farMeters * rgbd.worldScale * 4.0f;
     dome.mesh->set_bounds(UnityEngine::Bounds(UnityEngine::Vector3::get_zero(),
         UnityEngine::Vector3(diameter, diameter, diameter)));
     PaperLogger.info("Nexora RGBD '{}' enabled: range={}..{}m colorWidth={} mesh={}x{} oneDecoder=true",
                      dome.id, rgbd.nearMeters, rgbd.farMeters, rgbd.colorWidth,
-                     kRgbdSegments, kRgbdRings);
+                     rgbd.Segments(), rgbd.Rings());
   } else {
     dome.material->DisableKeyword(u"NEXORA_RGBD_ON");
     dome.followPlayer = ReadBool(json, "followPlayer").value_or(previousRgbd ? true : previousFollow);
@@ -1433,13 +1605,21 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
     dome.animation.active = false;
   }
   ApplyDomeVisual(dome);
-  std::string const url = ResolveMediaUrl(json);
   dome.media = ReadString(json, "media").value_or(url);
   dome.looping = ReadBool(json, "loop").value_or(false);
   dome.syncToSong = ReadBool(json, "syncToSong").value_or(true);
   dome.videoOffset = ReadFloat(json, "videoOffset").value_or(0.0f);
   dome.eventStartSongTime = eventTime;
   dome.authoredPlaybackSpeed = Clamp(ReadFloat(json, "speed").value_or(1.0f), 0.1f, 4.0f);
+  if (reusePrewarm) {
+    dome.pendingPlay = ReadBool(json,"autoplay").value_or(true);
+    dome.pendingInitialTime.reset();
+    dome.pendingInitialTimeTracksSong = false;
+    dome.lastSyncRealtime = -1000;
+    ApplyDomeVisual(dome);
+    PaperLogger.info("Nexora prewarm ADOPTED dome='{}' decoder not restarted frame={}", dome.id, dome.video->get_frame());
+    return;
+  }
   float const realtime = UnityEngine::Time::get_realtimeSinceStartup();
   dome.prepareStartedRealtime =
       std::isfinite(realtime) ? std::max(realtime, 0.001f) : 0.001f;
@@ -1719,6 +1899,9 @@ void Runtime::ApplyDomeVisual(DomeLayer& dome) {
   dome.material->SetFloat(s_propRgbdNear, dome.rgbd.nearMeters);
   dome.material->SetFloat(s_propRgbdFar, dome.rgbd.farMeters);
   dome.material->SetFloat(s_propRgbdColorWidth, dome.rgbd.colorWidth);
+  dome.material->SetFloat(s_propRgbdStrength, dome.rgbd.strength);
+  dome.material->SetFloat(s_propRgbdWorldScale, dome.rgbd.worldScale);
+  dome.material->SetFloat(s_propRgbdEdgeRepair, dome.rgbd.quality > 0 ? 1 : 0);
   // A partially faded video must not write invisible occluders into gameplay.
   dome.material->SetFloat(s_propDepthWrite,
       dome.rgbd.enabled && value.opacity * value.tint.a >= 0.999f ? 1.0f : 0.0f);
@@ -1730,12 +1913,29 @@ void Runtime::ApplyDomeVisual(DomeLayer& dome) {
     transform->set_localScale(UnityEngine::Vector3(radius * value.scaleX,
                                                     radius * value.scaleY,
                                                     radius * value.scaleZ));
-    transform->set_rotation(UnityEngine::Quaternion::Euler(value.pitch, value.yaw,
-                                                            value.roll));
+    auto rootRotation = UnityEngine::Quaternion::Euler(value.pitch, value.yaw, value.roll);
+    double decodedTime = 0;
+    if (dome.rgbd.enabled && Alive(dome.video) && dome.video->get_frame() >= 0) {
+      double fps = dome.video->get_frameRate();
+      if (std::isfinite(fps) && fps > 0) decodedTime = dome.video->get_frame()/fps;
+    }
+    auto pose = SampleCapturePose(dome.capturePoses, decodedTime);
+    auto captureRotation = UnityEngine::Quaternion(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]);
+    transform->set_rotation(UnityEngine::Quaternion::op_Multiply(rootRotation, captureRotation));
+    if (dome.rgbd.enabled) {
+      auto p = UnityEngine::Quaternion::op_Multiply(rootRotation,
+          UnityEngine::Vector3(pose.position[0]*dome.rgbd.worldScale, pose.position[1]*dome.rgbd.worldScale, pose.position[2]*dome.rgbd.worldScale));
+      transform->set_position(UnityEngine::Vector3(dome.offset.x+p.x, dome.offset.y+p.y, dome.offset.z+p.z));
+      auto camera = UnityEngine::Camera::get_main();
+      if (Alive(camera.unsafePtr())) {
+        auto head = transform->InverseTransformPoint(camera->get_transform()->get_position());
+        dome.material->SetVector(s_propRgbdHead, UnityEngine::Vector4(head.x,head.y,head.z,0));
+      }
+    }
   }
   if (Alive(dome.renderer)) {
     bool const canRenderVideo =
-        dome.textureBound && Alive(dome.video) &&
+        !_menuPrewarming && dome.textureBound && Alive(dome.video) &&
         dome.video->get_isPrepared() && value.opacity > 0.001f;
     dome.renderer->set_enabled(canRenderVideo);
   }
@@ -1890,6 +2090,7 @@ void Runtime::EnsureVideoTarget(DomeLayer& dome) {
 }
 
 void Runtime::FailVideo(DomeLayer& dome) {
+  if (!dome.fallbackUrl.empty()) dome.fallbackRequested = true;
   dome.prepareFailed = true;
   dome.pendingPlay = false;
   dome.pendingInitialTime.reset();
@@ -1918,8 +2119,35 @@ void Runtime::FailVideo(DomeLayer& dome) {
   }
 }
 
+void Runtime::BeginRgbFallback(DomeLayer& dome) {
+  // Defer decoder recreation outside native error/frame callbacks. Retry RGB
+  // once only, never bounce between sources or start two hardware decoders.
+  dome.fallbackRequested = false;
+  std::string url = std::move(dome.fallbackUrl);
+  dome.fallbackUrl.clear();
+  if (url.empty() || !Alive(dome.video)) return;
+  StopVideo(dome);
+  dome.rgbd = {};
+  dome.capturePoses.clear();
+  dome.followPlayer = true;
+  dome.expectedDuration = dome.expectedFps = 0;
+  dome.material->DisableKeyword(u"NEXORA_RGBD_ON");
+  dome.prepareFailed = false;
+  dome.pendingPlay = true;
+  dome.pendingInitialTime = std::max(0.0, static_cast<double>(dome.videoOffset));
+  dome.pendingInitialTimeTracksSong = !_menuPrewarming && dome.syncToSong;
+  dome.prepareStartedRealtime = std::max(UnityEngine::Time::get_realtimeSinceStartup(), .001f);
+  dome.video->set_url(StringW(url));
+  dome.video->set_sendFrameReadyEvents(true);
+  dome.video->Prepare();
+  ApplyDomeVisual(dome);
+  PaperLogger.warn("Nexora RGB-only FALLBACK started: '{}'", dome.id);
+}
+
 void Runtime::UpdateVideo(DomeLayer& dome, float songTime, float realtime) {
+  if (dome.fallbackRequested) BeginRgbFallback(dome);
   if (!Alive(dome.video) || dome.prepareFailed) return;
+  if (_menuPrewarming && dome.prewarmed && dome.textureBound) return;
   if (!std::isfinite(songTime) || !std::isfinite(realtime)) return;
 
   try {
@@ -2064,6 +2292,10 @@ void Runtime::OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
 
       bool const firstFrame = !dome.textureBound;
       dome.textureBound = true;
+      if (_menuPrewarming && dome.prewarmed) {
+        player->Pause();
+        dome.pendingPlay = false;
+      }
       dome.playStartedRealtime = 0.0f;
       if (Alive(dome.material)) {
         if (s_propMainTex != 0) dome.material->SetTexture(s_propMainTex, texture);
@@ -2071,7 +2303,7 @@ void Runtime::OnVideoFrameReady(UnityEngine::Video::VideoPlayer* player,
       }
       if (Alive(dome.renderer)) {
         if (firstFrame) dome.renderer->SetPropertyBlock(nullptr);
-        dome.renderer->set_enabled(dome.visual.opacity > 0.001f);
+        dome.renderer->set_enabled(!_menuPrewarming && dome.visual.opacity > 0.001f);
       }
 
       // Unity continues drawing into the same destination without requiring
@@ -2106,6 +2338,20 @@ void Runtime::OnVideoPrepared(UnityEngine::Video::VideoPlayer* player) {
       auto const width = player->get_width();
       auto const height = player->get_height();
       double const length = player->get_length();
+      if (dome.rgbd.enabled) {
+        double fps = player->get_frameRate();
+        double colorPixels = width * dome.rgbd.colorWidth;
+        bool mismatch = std::abs(colorPixels - height*2.0) > 2.0 ||
+            (dome.expectedFps > 0 && std::abs(fps-dome.expectedFps) > .05) ||
+            (dome.expectedDuration > 0 && std::abs(length-dome.expectedDuration) > std::max(.05, 1.0/std::max(fps,1.0)));
+        if (mismatch) {
+          PaperLogger.error("Nexora RGBD metadata mismatch size={}x{} colorWidth={} fps={} duration={}; requesting RGB fallback",
+              width,height,dome.rgbd.colorWidth,fps,length);
+          FailVideo(dome); return;
+        }
+        PaperLogger.info("Nexora RGBD validated: packed single-frame synchronization fps={} duration={} RT estimate={}MiB (decoder memory excluded)",
+            fps,length,static_cast<double>(width)*height*4/1048576);
+      }
       if (width == 0 || height == 0 || !std::isfinite(length) || length <= 0.001) {
         PaperLogger.error(
             "Nexora decoder prepared invalid media metadata on dome '{}' size={}x{} length={}",
@@ -2227,6 +2473,7 @@ void Runtime::UpdateDomes(float songTime) {
 void Runtime::Update() {
   try {
     if (_pendingReset && _lifecycle.RenderDepth() == 0) FinishPendingReset();
+    if (_menuPrewarming) UpdatePrewarm();
     if (_currentBeatmapData == nullptr) TryPrepareSelectedBeatmapFromScene();
     if (!_lifecycle.IsActive() && !_lifecycle.IsSuspended()) return;
 
@@ -2239,6 +2486,8 @@ void Runtime::Update() {
       CapturePausedVideoDiagnostics();
       return;
     }
+    bool profile = GetDebugLoggingEnabled();
+    auto profileStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     float const songTime = SongTime();
     if (_lastSongTime >= 0.0f && songTime + 0.35f < _lastSongTime) {
       for (auto& [_, dome] : _domes) dome.lastSyncRealtime = -1000.0f;
@@ -2248,6 +2497,13 @@ void Runtime::Update() {
     // Camera-event values are shader inputs on every Nexora dome. Update them
     // before the dome pass so there is no one-frame event delay.
     UpdateDomes(songTime);
+    if (profile) {
+      double cpu = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-profileStart).count();
+      if (_performance.Add(cpu, UnityEngine::Time::get_unscaledDeltaTime()*1000.0)) {
+        PaperLogger.info("NEXORA_PERF samples=240 updateCpuP95Ms={:.3f} frameIntervalP95Ms={:.3f} gpuMs=unavailable target120BudgetMs=8.333",
+            PerformanceWindow::P95(_performance.updateMs), PerformanceWindow::P95(_performance.frameIntervalMs));
+      }
+    }
   } catch (std::exception const& exception) {
     int const frame = UnityEngine::Time::get_frameCount();
     if (frame - _lastUpdateErrorFrame >= 90) {
@@ -2359,6 +2615,13 @@ void Runtime::DestroyDome(std::string const& id, bool canTouchUnity) {
 
 void Runtime::DestroyAllDomes(bool canTouchUnity) {
   if (!canTouchUnity) {
+    for (auto it = _domes.begin(); it != _domes.end();) {
+      if (it->second.persistentRoot) {
+        auto id = it->first;
+        ++it;
+        DestroyDome(id, true);
+      } else ++it;
+    }
     _domes.clear();
     return;
   }
@@ -2387,8 +2650,11 @@ void Runtime::ResetSession(bool sceneTransition) {
   _cameraAnimation.active = false;
   _nextGameplayProbeFrame = -1;
   _lastSongTime = -1.0f;
+  _performance.count = 0;
   _pendingReset = false;
   _pendingResetSceneTransition = false;
+  _menuPrewarming = false;
+  _prewarmSelection.clear();
   [[maybe_unused]] bool const retirementCompleted = _lifecycle.CompleteRetirement();
 }
 
@@ -2402,7 +2668,7 @@ void Runtime::FinishPendingReset() {
 void Runtime::HandleScenesWillDismiss() {
   // This hook runs before GameScenesManager returns its transition coroutine,
   // so the gameplay objects and decoder delegates are still valid to detach.
-  ResetSession(false);
+  if (!_menuPrewarming) ResetSession(false);
 }
 
 void Runtime::HandleGameplayRestart() { ResetSession(false); }

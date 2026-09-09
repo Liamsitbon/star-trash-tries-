@@ -3,10 +3,10 @@
     "unityVersion": "2021.3.16f1",
     "buildTarget": "Android",
     "graphicsApis": "Vulkan,OpenGLES3",
-    "shaderSha256": "54c5c4843e39e5e2d8cbe9c57c8848b1515b779d9ff50a5959882a383e89c8f8",
+    "shaderSha256": "44868ec6b2c6d5b76dbb7f6af700a752364c7dc9372a83abb3dee372b05b5747",
     "shaderMetaSha256": "786e667c2dac3ba62d136813549f4a5804b2efae69f8d35aeff8ce5f87e73e73",
-    "materialSha256": "188ae1ce2ddbc12b323f95bd2ebf405bd4f862fed025cdc51b77bf33af80093c",
+    "materialSha256": "e3ddf73ca83528bdb5e8d236f3b4a72a121d90ba253674cd2a0949132e901b22",
     "materialMetaSha256": "8252c901aad20982a120f275b4391c49ceabeafbb7944f0dd49dd23bdfd7d87a",
-    "builderSha256": "9af7ac81c9767450b5aef39ec8d92216dff5df710f68fe20d2d1fb2e1ba4559b",
-    "bundleSha256": "a5314c8f89914b57c4b0b3af2ba04a5606dc8edf0ca0c1be95118c0d5bef920a"
+    "builderSha256": "27f99687beaf6c16e41c54b62c0edf2ce86e9117834c689de74d58731a44851e",
+    "bundleSha256": "e183636c5ce8b4ac70d80c76043c3c3e95d86685ee2628520e815761c24c9bf8"
 }

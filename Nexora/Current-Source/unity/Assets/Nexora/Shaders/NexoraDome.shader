@@ -10,6 +10,10 @@ Shader "Nexora/VideoDome"
         [HideInInspector] _RgbdNear ("RGBD near radial distance (m)", Float) = 2
         [HideInInspector] _RgbdFar ("RGBD far radial distance (m)", Float) = 100
         [HideInInspector] _RgbdColorWidth ("RGB panel width fraction", Float) = 0.8
+        [HideInInspector] _RgbdStrength ("Positional parallax strength", Float) = 1
+        [HideInInspector] _RgbdWorldScale ("Capture world scale", Float) = 1
+        [HideInInspector] _RgbdHead ("Capture-local head centre", Vector) = (0,0,0,0)
+        [HideInInspector] _RgbdEdgeRepair ("Conservative RGB edge fallback", Float) = 1
         _Tint ("Tint", Color) = (1,1,1,1)
         _Opacity ("Opacity", Range(0,1)) = 1
         _Brightness ("Brightness", Range(0,8)) = 1
@@ -82,6 +86,8 @@ Shader "Nexora/VideoDome"
             float _VideoReady;
             float _RawSampling, _SimpleSampling;
             float _RgbdNear, _RgbdFar, _RgbdColorWidth;
+            float _RgbdStrength, _RgbdWorldScale, _RgbdEdgeRepair;
+            float4 _RgbdHead;
             float _Opacity, _Brightness, _Exposure, _Saturation, _HueShift;
             float _ProjectionMode, _FlipX, _FlipY, _SwapEyes;
             float _DeformAmplitude, _DeformFrequency, _DeformSpeed;
@@ -106,6 +112,9 @@ Shader "Nexora/VideoDome"
             {
                 float4 vertex : SV_POSITION;
                 float2 uv : TEXCOORD0;
+                #if defined(NEXORA_RGBD_ON)
+                    float4 depthRegion : TEXCOORD1;
+                #endif
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -180,7 +189,13 @@ Shader "Nexora/VideoDome"
                     #if !defined(UNITY_COLORSPACE_GAMMA)
                         depthCode = LinearToGammaSpace(float3(depthCode, depthCode, depthCode)).r;
                     #endif
-                    p *= lerp(_RgbdNear, _RgbdFar, saturate(depthCode));
+                    // Each sampled region has its own metric depth. Moving the
+                    // head changes near/far disparity; rotation remains normal
+                    // Unity stereo projection. Root motion is not this system.
+                    float radius = lerp(_RgbdNear, _RgbdFar, saturate(depthCode)) * _RgbdWorldScale;
+                    p *= radius;
+                    p += _RgbdHead.xyz * (1.0 - _RgbdStrength);
+                    o.depthRegion = float4(p, radius);
                 #endif
                 o.vertex = UnityObjectToClipPos(float4(p, 1));
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
@@ -193,6 +208,34 @@ Shader "Nexora/VideoDome"
                 float2 uv = i.uv;
                 uv.x = lerp(uv.x, 1.0 - uv.x, _FlipX);
                 uv.y = lerp(uv.y, 1.0 - uv.y, _FlipY);
+
+                #if defined(NEXORA_RGBD_ON)
+                    if (_RgbdEdgeRepair > 0.5)
+                    {
+                        float2 duv = uv;
+                        duv.x = clamp(_RgbdColorWidth + saturate(duv.x)*(1.0-_RgbdColorWidth),
+                            _RgbdColorWidth + _MainTex_TexelSize.x*.5, 1.0-_MainTex_TexelSize.x*.5);
+                        float code = tex2D(_MainTex, duv).r;
+                        #if !defined(UNITY_COLORSPACE_GAMMA)
+                            code = LinearToGammaSpace(float3(code,code,code)).r;
+                        #endif
+                        float actual = lerp(_RgbdNear,_RgbdFar,saturate(code))*_RgbdWorldScale;
+                        float mismatch = abs(actual-i.depthRegion.w)/max(actual,.5);
+                        // A stretched triangle across a depth edge has no true
+                        // hidden-surface colour. Blend to the rotation-only RGB
+                        // ray rather than inventing geometry or leaving a hole.
+                        float3 ray = normalize(i.depthRegion.xyz-_RgbdHead.xyz);
+                        float2 fallbackUV = float2(frac(atan2(ray.x,ray.z)/6.283185307),
+                            1.0-acos(clamp(ray.y,-1.0,1.0))/3.141592654);
+                        fallbackUV.x = lerp(fallbackUV.x,1.0-fallbackUV.x,_FlipX);
+                        fallbackUV.y = lerp(fallbackUV.y,1.0-fallbackUV.y,_FlipY);
+                        // Do not interpolate across the longitude seam.
+                        float dx = fallbackUV.x-uv.x;
+                        dx -= round(dx);
+                        float repair = smoothstep(.2,.6,mismatch);
+                        uv = float2(frac(uv.x+dx*repair),lerp(uv.y,fallbackUV.y,repair));
+                    }
+                #endif
 
                 // Draw only decoded video. A fabricated backdrop cannot repair
                 // a decoder or shader failure and would hide its real state.
