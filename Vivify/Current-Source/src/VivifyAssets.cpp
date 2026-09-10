@@ -1,4 +1,5 @@
 #include "VivifyRuntimeInternal.hpp"
+#include "VivifyRenderTexturePolicy.hpp"
 #include "VivifyComponents.hpp"
 #include "QuestInterop.hpp"
 #include <array>
@@ -669,20 +670,24 @@ void Runtime::LogUnityPlatformInfoOnce() {
       BoolText(UnityEngine::SystemInfo::get_supportsInstancing()),
       BoolText(UnityEngine::SystemInfo::SupportsRenderTextureFormat(UnityEngine::RenderTextureFormat::R8)),
       BoolText(UnityEngine::SystemInfo::SupportsRenderTextureFormat(UnityEngine::RenderTextureFormat::Depth)));
+  PaperLogger.info("Vivify shader capabilities: shaderLevel={} compute={} (capability flags are not per-shader rendering proof)",
+                   UnityEngine::SystemInfo::get_graphicsShaderLevel(),
+                   BoolText(UnityEngine::SystemInfo::get_supportsComputeShaders()));
 }
 
-UnityEngine::RenderTextureFormat Runtime::SupportedRenderTextureFormat(UnityEngine::RenderTextureFormat requested,
+std::optional<UnityEngine::RenderTextureFormat> Runtime::SupportedRenderTextureFormat(UnityEngine::RenderTextureFormat requested,
                                                                        std::string_view context) const {
-  // Keep an authored render-texture format whenever the device supports it.
-  if (UnityEngine::SystemInfo::SupportsRenderTextureFormat(requested)) {
-    return requested;
+  auto resolved = RenderTexturePolicy::Resolve(requested, [](auto format) {
+    return UnityEngine::SystemInfo::SupportsRenderTextureFormat(format);
+  });
+  if (!resolved) {
+    PaperLogger.warn("Vivify RT has no compatible format: context={} requested={}; not substituting 8-bit color for depth/HDR/integer data",
+                     context, requested.value__);
+  } else if (resolved->value__ != requested.value__) {
+    PaperLogger.warn("Vivify RT format widened: context={} requested={} fallback={}; authored channels preserved, device/map rendering still needs verification",
+                     context, requested.value__, resolved->value__);
   }
-  auto fallback = UnityEngine::RenderTextureFormat::ARGB32;
-  if (GetVivifyDebugLogging()) {
-    PaperLogger.warn("Vivify RT format unsupported: context={} requested={} fallback={}",
-                     context, requested.value__, fallback.value__);
-  }
-  return fallback;
+  return resolved;
 }
 
 void Runtime::LogMaterialShader(std::string_view context, std::string_view assetPath, UnityEngine::Material* material) const {

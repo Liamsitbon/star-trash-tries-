@@ -266,6 +266,8 @@ struct DeclaredTextureData {
   std::optional<int> width;
   std::optional<int> height;
   std::optional<UnityEngine::RenderTextureFormat> format;
+  bool formatResolved = false;
+  std::optional<UnityEngine::RenderTextureFormat> resolvedFormat;
   std::optional<UnityEngine::FilterMode> filterMode;
   UnityEngine::RenderTexture* texture = nullptr;
 };

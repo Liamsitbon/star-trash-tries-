@@ -139,7 +139,7 @@ private:
     return il2cpp_utils::try_cast<T>(asset).value_or(nullptr);
   }
   void LogUnityPlatformInfoOnce();
-  UnityEngine::RenderTextureFormat SupportedRenderTextureFormat(UnityEngine::RenderTextureFormat requested,
+  std::optional<UnityEngine::RenderTextureFormat> SupportedRenderTextureFormat(UnityEngine::RenderTextureFormat requested,
                                                                 std::string_view context) const;
   void LogMaterialShader(std::string_view context, std::string_view assetPath, UnityEngine::Material* material) const;
   UnityEngine::Shader* FindUsableShader(std::string const& shaderName) const;

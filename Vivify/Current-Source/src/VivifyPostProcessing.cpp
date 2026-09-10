@@ -1,4 +1,5 @@
 #include "VivifyRuntimeInternal.hpp"
+#include "VivifyRenderTexturePolicy.hpp"
 #include "VivifyComponents.hpp"
 #include "UnityEngine/Rendering/CameraEvent.hpp"
 #include "UnityEngine/Rendering/TextureDimension.hpp"
@@ -329,17 +330,22 @@ void Runtime::EnsureDeclaredTextures() {
   int const maxTextureSize = std::max(1, UnityEngine::SystemInfo::get_maxTextureSize());
   for (auto& [name, data] : _declaredTextures) {
     auto descriptor = _cachedMainDescriptor;
-    int width = std::clamp(data.width.value_or(descriptor.get_width()), 1, maxTextureSize);
-    int height = std::clamp(data.height.value_or(descriptor.get_height()), 1, maxTextureSize);
-    width = std::clamp(static_cast<int>(width / data.xRatio), 1, maxTextureSize);
-    height = std::clamp(static_cast<int>(height / data.yRatio), 1, maxTextureSize);
+    int width = RenderTexturePolicy::ScaledDimension(data.width.value_or(descriptor.get_width()), data.xRatio, maxTextureSize);
+    int height = RenderTexturePolicy::ScaledDimension(data.height.value_or(descriptor.get_height()), data.yRatio, maxTextureSize);
     descriptor.set_width(width);
     descriptor.set_height(height);
     descriptor.set_msaaSamples(1);
     descriptor.set_depthBufferBits(0);
     if (data.format.has_value()) {
-      descriptor.set_colorFormat(
-          SupportedRenderTextureFormat(data.format.value(), "CreateScreenTexture:" + name));
+      if (!data.formatResolved) {
+        data.resolvedFormat = SupportedRenderTextureFormat(data.format.value(), "CreateScreenTexture:" + name);
+        data.formatResolved = true;
+        if (!data.resolvedFormat) {
+          UnityEngine::Shader::SetGlobalTexture(data.propertyId, static_cast<UnityEngine::Texture*>(nullptr));
+        }
+      }
+      if (!data.resolvedFormat) continue;
+      descriptor.set_colorFormat(*data.resolvedFormat);
     }
 
     bool recreate = !IsAlive(data.texture) || !data.texture->IsCreated();
@@ -972,8 +978,8 @@ void Runtime::HandleCreateScreenTexture(rapidjson::Value const& json) {
       return std::nullopt;
     }();
   }
-  if (dt.xRatio <= 0.0f) dt.xRatio = 1.0f;
-  if (dt.yRatio <= 0.0f) dt.yRatio = 1.0f;
+  if (!std::isfinite(dt.xRatio) || dt.xRatio <= 0.0f) dt.xRatio = 1.0f;
+  if (!std::isfinite(dt.yRatio) || dt.yRatio <= 0.0f) dt.yRatio = 1.0f;
   _declaredTextures[name] = std::move(dt);
   // Desktop Vivify creates declared textures from the actual render source
   // descriptor. Keeping the declaration alive until that descriptor exists

@@ -32,11 +32,11 @@ if(CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
 	add_compile_options(-g)
 endif()
 
-project(Vivify
-	VERSION ${MOD_VERSION})
+string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" NUMERIC_MOD_VERSION "${MOD_VERSION}")
+project(Vivify VERSION ${NUMERIC_MOD_VERSION})
 
 add_compile_definitions(MOD_ID="${CMAKE_PROJECT_NAME}")
-add_compile_definitions(VERSION="${CMAKE_PROJECT_VERSION}")
+add_compile_definitions(VERSION="${MOD_VERSION}")
 
 set(COMPILE_ID ${CMAKE_PROJECT_NAME})
 

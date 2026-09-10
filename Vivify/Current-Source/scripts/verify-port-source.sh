@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-expected_version="0.6.13"
+expected_version="0.6.14-rc.1"
 expected_qpm_config_version="0.4.0"
 
 if [[ "${VIVIFY_SKIP_HOST_TESTS:-0}" == "1" ]]; then

@@ -1,0 +1,44 @@
+name: Vivify shader compatibility candidate (not promoted)
+on:
+  push:
+    branches: [vivify-shader-compat]
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build tools
+        run: sudo apt-get update && sudo apt-get install --yes cmake ninja-build unzip file ripgrep
+      - name: Host policies and shader extraction tests
+        run: |
+          bash Vivify/Current-Source/scripts/verify-port-source.sh
+          python3 tools/shader_probe/test_extract.py
+      - uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: Vivify/Current-Source
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: false
+      - name: Build and package candidate
+        working-directory: Vivify/Current-Source
+        run: |
+          pwsh -NoProfile -File scripts/build.ps1
+          python3 scripts/package_qmod.py
+          VIVIFY_SKIP_HOST_TESTS=1 bash scripts/verify-port-source.sh
+      - name: Exact source and package checksums
+        run: |
+          mkdir -p dist
+          cp Vivify/Current-Source/release/Vivify-Quest-0.6.14-rc.1.qmod dist/
+          cp Vivify/Current-Source/release/Vivify-Quest-0.6.14-rc.1.report.json dist/
+          git archive --format=tar.gz --prefix=vivify-shader-compat/ -o dist/vivify-shader-compat-source.tar.gz HEAD Vivify/Current-Source tools/shader_probe docs/vivify-shader-compat-rc1.md
+          (cd dist && sha256sum *.qmod *.tar.gz > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: vivify-shader-compat-candidate
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

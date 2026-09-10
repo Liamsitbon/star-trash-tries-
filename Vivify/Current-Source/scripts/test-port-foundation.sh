@@ -34,5 +34,11 @@ printf '%s\n' 'PASS lifecycle state-machine test'
 "$performance_test_binary"
 printf '%s\n' 'PASS Quest performance policy tests (ASan/UBSan)'
 
+"${CXX:-c++}" -std=c++20 -Wall -Wextra -Werror \
+  -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer \
+  -I"$project_dir/include" "$project_dir/tests/VivifyRenderTexturePolicyTests.cpp" \
+  -o "$test_dir/vivify-rt-policy-tests"
+"$test_dir/vivify-rt-policy-tests"
+
 pwsh -NoProfile -File "$project_dir/tests/Quest3PerformanceAnalysisTests.ps1"
 printf '%s\n' 'PASS Quest performance capture analyzer test'
