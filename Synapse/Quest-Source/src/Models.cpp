@@ -56,17 +56,20 @@ std::uint32_t UInt(Json const& j,char const* key) {
 }
 float Float(Json const& j,char const* key,float fallback=0) {
   auto p=Field(j,key); if(!p) return fallback;
-  if(!p->is_number()) Bad(); auto n=p->get<double>();
+  if(!p->is_number()) Bad();
+  auto n=p->get<double>();
   if(!std::isfinite(n) || std::abs(n)>std::numeric_limits<float>::max()) Bad();
   return static_cast<float>(n);
 }
 bool Bool(Json const& j,char const* key,bool fallback=false) {
   auto p=Field(j,key); if(!p) return fallback;
-  if(!p->is_boolean()) Bad(); return p->get<bool>();
+  if(!p->is_boolean()) Bad();
+  return p->get<bool>();
 }
 std::optional<bool> NullableBool(Json const& j,char const* key) {
   auto p=Field(j,key); if(!p || p->is_null()) return {};
-  if(!p->is_boolean()) Bad(); return p->get<bool>();
+  if(!p->is_boolean()) Bad();
+  return p->get<bool>();
 }
 template<class T,class F> std::vector<T> Array(Json const& j,F parse) {
   if(!j.is_array() || j.size()>4096) Bad();
@@ -95,7 +98,8 @@ Map ReadMap(Json const& j) {
   if(auto p=Field(j,"ruleset"); p && !p->is_null()) m.ruleset=ReadRuleset(*p);
   m.keys=List<Key>(j,"keys",[](Json const& x) {
     Key k{Text(x,"characteristic"),Int(x,"difficulty")};
-    if(k.difficulty<0 || k.difficulty>4) Bad(); return k;
+    if(k.difficulty<0 || k.difficulty>4) Bad();
+    return k;
   });
   m.downloads=List<Download>(j,"downloads",[](Json const& x) {
     return Download{Text(x,"gameVersion"),Text(x,"url"),Text(x,"hash"),NullableText(x,"key")};
