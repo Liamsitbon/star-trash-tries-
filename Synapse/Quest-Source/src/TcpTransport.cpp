@@ -14,8 +14,12 @@
 #include <unistd.h>
 
 namespace Synapse::Quest {
+double TransportClockSeconds() {
+  static auto const origin=std::chrono::steady_clock::now();
+  return std::chrono::duration<double>(std::chrono::steady_clock::now()-origin).count();
+}
 namespace {
-double Now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+double Now() { return TransportClockSeconds(); }
 constexpr int PollMs=50;
 constexpr std::size_t QueueCapacity=64;
 struct Socket {
@@ -53,12 +57,12 @@ struct TcpTransport::Impl {
     std::lock_guard lock(mutex);
     if(events.size()==QueueCapacity) return false;
     status={ConnectionState::Connected,TransportError::None,++nextConnection,attempt};
-    events.push_back({TransportEvent::Kind::Connected,status.connection,{}}); return true;
+    events.push_back({TransportEvent::Kind::Connected,status.connection,{},Now()}); return true;
   }
   bool Received(ServerMessage message) {
     std::lock_guard lock(mutex);
     if(events.size()==QueueCapacity) return false;
-    events.push_back({TransportEvent::Kind::Message,status.connection,std::move(message)}); return true;
+    events.push_back({TransportEvent::Kind::Message,status.connection,std::move(message),Now()}); return true;
   }
   std::vector<std::uint8_t> NextFrame() {
     std::lock_guard lock(mutex);

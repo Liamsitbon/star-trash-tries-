@@ -36,6 +36,10 @@ no personal upstream appsettings, Windows sample bundles or maps are uploaded.
   it contains no Unity objects and cannot expose a reused receive buffer to the UI.
 - Thirty-sample server clock, matched ping responses, seconds-based 10s timeout.
   Timeout is not treated as a successful synchronization sample.
+  Transport events retain worker receipt time in the shared process-relative
+  monotonic clock: a delayed UI must use `receivedAt` for Pong, not its dequeue
+  time. Only one ping may remain outstanding, so repeated sends cannot extend
+  a missing reply's timeout forever.
 - Exact-artifact/generation readiness gate: an old download callback cannot mark
   the new map ready or trigger scene teardown before verified preparation.
 
@@ -43,6 +47,8 @@ Host CTest, 10,000 malformed inputs under ASan/UBSan, .NET oracle comparison and
 Android ARM64 compilation passed locally. No real server connection, real auth,
 gameplay transition or headset behavior was tested. The ARM64 output is a static
 component library, **not** a mod to sideload.
+The host transport suite also passed under ThreadSanitizer. This covers exercised
+thread interleavings, not a proof of all possible races or headset behavior.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug

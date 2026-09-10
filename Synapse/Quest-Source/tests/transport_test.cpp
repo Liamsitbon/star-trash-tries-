@@ -54,8 +54,11 @@ int main() {
     });
     assert(client.Start({"127.0.0.1",server.port},{1,1,0})); auto id=Connection(client);
     assert(!client.Start({"127.0.0.1",server.port})); assert(!client.Send(id+1,frame)); assert(client.Send(id,frame));
+    Until([&]{return client.Status().state==ConnectionState::Failed;});
+    auto alreadyReceived=TransportClockSeconds();
+    std::this_thread::sleep_for(30ms); // Simulate a UI stall before consuming events.
     std::vector<FromServer> messages;
-    Until([&]{ while(auto e=client.Pop()) { messages.push_back(e->message.opcode); if(e->message.opcode==FromServer::Disconnect) assert(e->message.disconnectCode==4); } return messages.size()==3; });
+    Until([&]{ while(auto e=client.Pop()) { assert(e->receivedAt>=0 && e->receivedAt<=alreadyReceived); messages.push_back(e->message.opcode); if(e->message.opcode==FromServer::Disconnect) assert(e->message.disconnectCode==4); } return messages.size()==3; });
     assert((messages==std::vector{FromServer::Authenticated,FromServer::StopLevel,FromServer::Disconnect}));
     Until([&]{return client.Status().state==ConnectionState::Failed;}); assert(client.Status().error==TransportError::ServerDisconnect);
     mayClose.set_value(); peer.get();

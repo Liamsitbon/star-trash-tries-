@@ -3,6 +3,9 @@
 #include <memory>
 #include <optional>
 namespace Synapse::Quest {
+// Shared process-relative monotonic seconds. Use this same clock for ping sends
+// and receipt timestamps; never compare wall-clock or Unity song time to it.
+double TransportClockSeconds();
 struct Endpoint {
   // Original game's listing uses IPAddress. Hostname DNS is a separate, pending
   // cancellable adapter, not a blocking call hidden in the game thread.
@@ -26,6 +29,7 @@ struct TransportEvent {
   enum class Kind { Connected, Message } kind=Kind::Connected;
   std::uint64_t connection=0;
   ServerMessage message;
+  double receivedAt=0; // Captured by the worker, not when a stalled UI pops it.
 };
 class TcpTransport {
   struct Impl;
