@@ -1,0 +1,95 @@
+name: NE Fixed Add-on
+
+on:
+  push:
+    branches: [main, ne-fixed-addon]
+    tags: ["ne-fixed-addon-*"]
+    paths:
+      - "NE-Fixed/Addon-Source/**"
+      - ".github/workflows/ne-fixed-addon.yml"
+  pull_request:
+    paths:
+      - "NE-Fixed/Addon-Source/**"
+      - ".github/workflows/ne-fixed-addon.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ne-fixed-addon-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore Android headers and libraries
+        uses: Fernthedev/qpm-action@b15763e607f639cd0452b25927ddd353ce1f2f0f # v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          package_path: NE-Fixed/Addon-Source
+          qpm_version: version@1.5.8
+          restore: true
+          cache: true
+          resolve_ndk: false
+
+      - name: Select Android NDK 27.3
+        run: |
+          sdkmanager "ndk;27.3.13750724"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+
+      - name: Host tests and ownership boundary
+        working-directory: NE-Fixed/Addon-Source
+        env:
+          CXX: clang++
+        run: bash scripts/test_host.sh
+
+      - name: Build independent ARM64 add-on
+        working-directory: NE-Fixed/Addon-Source
+        run: |
+          bash scripts/build.sh
+          python3 scripts/package_qmod.py
+
+      - name: Stage exact package and source
+        id: stage
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          version="$(python3 -c 'import json; print(json.load(open("NE-Fixed/Addon-Source/mod.json"))["version"])')"
+          if [ "$REF_TYPE" = tag ]; then
+            test "$REF_NAME" = "ne-fixed-addon-$version"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$REF_NAME^{commit}")"
+          fi
+          mkdir -p dist
+          cp "NE-Fixed/Addon-Source/release/NE-Fixed-Addon-Quest-$version.qmod" dist/
+          unzip -tq "dist/NE-Fixed-Addon-Quest-$version.qmod"
+          git archive --format=tar.gz --prefix="star-trash-tries-ne-fixed-addon-$version/" \
+            -o "dist/NE-Fixed-Addon-$version-source.tar.gz" HEAD
+          (cd dist && sha256sum *.qmod *.tar.gz > SHA256SUMS)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ne-fixed-addon-${{ steps.stage.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release tested package candidate and matching source
+        if: startsWith(github.ref, 'refs/tags/ne-fixed-addon-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.stage.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            --title "NE Fixed Add-on $VERSION — alongside official NE 1.6.3" \
+            --notes-file NE-Fixed/Addon-Source/INSTALL.md

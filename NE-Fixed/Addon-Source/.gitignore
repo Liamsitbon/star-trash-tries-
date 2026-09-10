@@ -1,0 +1,7 @@
+extern/
+build/
+release/
+ndkpath.txt
+qpm_defines.cmake
+extern.cmake
+qpm.shared.json

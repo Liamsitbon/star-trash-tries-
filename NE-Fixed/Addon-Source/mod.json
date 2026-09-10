@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/refs/heads/main/QuestPatcher.QMod/Resources/qmod.schema.json",
+  "_QPVersion": "1.2.0",
+  "name": "NE Fixed Add-on",
+  "id": "ne-fixed",
+  "version": "0.1.0-rc.1",
+  "author": "Liam Sitbon and Quest port contributors",
+  "modloader": "Scotland2",
+  "packageId": "com.beatgames.beatsaber",
+  "packageVersion": "1.40.8_7379",
+  "description": "Separate add-on for official NoodleExtensions 1.6.3: scene-scoped default note compatibility and cutout precision. Does not replace NE, inject fake notes again, or include all legacy 1.8.15 fixes. Quest playtesting required.",
+  "dependencies": [
+    {"id": "NoodleExtensions", "version": "=1.6.3", "downloadIfMissing": "https://github.com/bsq-ports/NoodleExtensions/releases/download/v1.6.3/NoodleExtensions.qmod"},
+    {"id": "lapiz", "version": "=0.2.23", "downloadIfMissing": "https://github.com/raineaeternal/Lapiz/releases/download/v0.2.23/Lapiz.qmod"},
+    {"id": "beatsaber-hook", "version": "^6.4.2", "downloadIfMissing": "https://github.com/QuestPackageManager/beatsaber-hook/releases/download/v6.4.2/beatsaber-hook.qmod"},
+    {"id": "custom-types", "version": "^0.18.4", "downloadIfMissing": "https://github.com/QuestPackageManager/Il2CppQuestTypePatching/releases/download/v0.18.4/CustomTypes.qmod"},
+    {"id": "custom-json-data", "version": "^0.24.5", "downloadIfMissing": "https://github.com/bsq-ports/CustomJSONData/releases/download/v0.24.5/custom-json-data.qmod"},
+    {"id": "songcore", "version": "^1.1.26", "downloadIfMissing": "https://github.com/raineaeternal/Quest-SongCore/releases/download/v1.1.26/SongCore.qmod"},
+    {"id": "bsml", "version": "^0.4.55", "downloadIfMissing": "https://github.com/bsq-ports/Quest-BSML/releases/download/v0.4.55/BSML.qmod"},
+    {"id": "paper2_scotland2", "version": "^4.8.0", "downloadIfMissing": "https://github.com/Fernthedev/paperlog/releases/download/v4.8.0/paper2_scotland2.qmod"}
+  ],
+  "modFiles": [],
+  "lateModFiles": ["libNEFixed.so"],
+  "libraryFiles": [],
+  "fileCopies": [],
+  "copyExtensions": []
+}
