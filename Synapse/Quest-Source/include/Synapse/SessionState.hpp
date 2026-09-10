@@ -15,7 +15,7 @@ class ServerClock {
 public:
   void Reset() { size_=next_=0; pending_.reset(); }
   bool BeginPing(float now) {
-    if(!std::isfinite(now) || now<0) return false;
+    if(pending_ || !std::isfinite(now) || now<0) return false;
     pending_=now; return true;
   }
   bool Pong(float echoed, float server, double received) {

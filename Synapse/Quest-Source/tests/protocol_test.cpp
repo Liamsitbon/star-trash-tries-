@@ -75,6 +75,7 @@ int main(int argc,char**) {
   }
   ServerClock clock;
   assert(!clock.Time(1)); assert(clock.BeginPing(1));
+  assert(!clock.BeginPing(1.1f)); // Do not overwrite a live sample or extend its timeout.
   assert(!clock.Pong(2,100,1.2)); assert(clock.Pong(1,100,1.2));
   assert(std::abs(*clock.Time(2)-100.9)<.00001);
   assert(clock.BeginPing(3)); assert(clock.TimedOut(13)); assert(!clock.Pong(3,110,13));
