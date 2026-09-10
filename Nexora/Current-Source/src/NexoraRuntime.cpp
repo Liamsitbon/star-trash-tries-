@@ -2,6 +2,7 @@
 
 #include "NexoraComponents.hpp"
 #include "QuestInterop.hpp"
+#include "ProjectionOrientation.hpp"
 #include "main.hpp"
 
 #include <algorithm>
@@ -556,6 +557,8 @@ void Runtime::LateLoad() {
         bool requiresNexora = false;
         try {
           std::string mapRoot;
+          if (runtime._selectedLevelId != event.levelID) runtime.ResetSession(false);
+          runtime._selectedLevelId = event.levelID;
           if (event.isCustom && event.customBeatmapLevel != nullptr) {
             mapRoot = std::string(event.customBeatmapLevel->customLevelPath);
           }
@@ -575,6 +578,13 @@ void Runtime::LateLoad() {
                 context.required.noodleExtensions, context.required.vivify);
           }
           runtime.SetSelectedMapRoot(std::move(mapRoot), requiresNexora);
+          bool const external = runtime._externalSelection.ForLevel(event.levelID) != nullptr;
+          auto selectedCharacteristicRef = event.beatmapKey.beatmapCharacteristic;
+          auto* selectedCharacteristic = selectedCharacteristicRef.unsafePtr();
+          runtime._selectedCharacteristic = Alive(selectedCharacteristic)
+              ? std::string(selectedCharacteristic->get_serializedName()) : "";
+          runtime._selectedDifficulty = static_cast<int>(event.beatmapKey.difficulty);
+          requiresNexora = requiresNexora || external;
 
           // Capability registration tells SongCore the mod is installed. Only
           // enable the play button after a required map has passed the private
@@ -598,6 +608,10 @@ void Runtime::LateLoad() {
             std::string const failure = runtime.QuestShaderAssetFailure();
             PaperLogger.error("Nexora required-map readiness failed: {}", failure);
             runtime.SetPlayButtonBlocked(true, failure);
+            return;
+          }
+          if (external) {
+            runtime.PrewarmExternalVideo();
             return;
           }
           auto characteristicRef = event.beatmapKey.beatmapCharacteristic;
@@ -625,7 +639,7 @@ void Runtime::LateLoad() {
         }
       };
   PaperLogger.info(
-      "Nexora runtime subscriptions ready; media is map-embedded and Vivify bundles are never loaded");
+      "Nexora runtime ready: authored map media unchanged; external video requires a local user selection; Vivify bundles are never loaded");
   // Capability registration is the public readiness signal and deliberately
   // the final potentially-throwing operation. Publish it only after every
   // required event subscription exists, so a partial late-load cannot let
@@ -786,6 +800,96 @@ void Runtime::PrewarmSelectedDifficulty(std::string const& characteristic, int d
   }
 }
 
+void Runtime::BindExternalVideo(ExternalVideo video) {
+  // Bind validates before resetting the currently usable selection.
+  _externalSelection.Bind(std::move(video));
+  ResetSession(false);
+  _nextGameplayProbeFrame = -1;
+  if (_externalSelection.ForLevel(_selectedLevelId)) PrewarmExternalVideo();
+  PaperLogger.info("Nexora Custom selected: level='{}'; playback in place; no map files changed",
+                   _externalSelection.Current()->levelId);
+}
+
+void Runtime::ClearExternalVideo() {
+  _externalSelection.Clear();
+  ResetSession(false);
+  _nextGameplayProbeFrame = -1;
+  SetPlayButtonBlocked(false);
+  if (GetNexoraEnabled() && _selectedMapRequiresNexora && !_selectedCharacteristic.empty())
+    PrewarmSelectedDifficulty(_selectedCharacteristic, _selectedDifficulty);
+}
+
+void Runtime::SetGameplayLevelId(std::string levelId) {
+  _gameplayLevelId = std::move(levelId);
+  _nextGameplayProbeFrame = -1;
+  // A different launch destination (e.g. multiplayer) must not inherit a
+  // hidden decoder prepared for the song previously highlighted in Solo.
+  if (_menuPrewarming && _gameplayLevelId != _selectedLevelId) ResetSession(false);
+}
+
+void Runtime::LoadExternalVideo(DomeLayer& dome, ExternalVideo const& video) {
+  rapidjson::Document json;
+  json.SetObject();
+  auto& allocator = json.GetAllocator();
+  json.AddMember("media", rapidjson::Value(video.path.filename().string().c_str(), allocator), allocator);
+  json.AddMember("azimuthConvention", "center-forward", allocator);
+  json.AddMember("videoOffset", video.offsetSeconds, allocator);
+  json.AddMember("yaw", video.yawDegrees, allocator);
+  json.AddMember("syncToSong", true, allocator);
+  json.AddMember("autoplay", true, allocator);
+  // This C++ parameter, not a JSON property, authorizes the selected path.
+  LoadVideo(dome, json, 0, video.path.string());
+}
+
+void Runtime::PrewarmExternalVideo() {
+  auto const* video = _externalSelection.ForLevel(_selectedLevelId);
+  if (!video) return;
+  auto key = "Custom/" + video->levelId + "/" + video->path.string() + "/" +
+             std::to_string(video->offsetSeconds) + "/" + std::to_string(video->yawDegrees);
+  if (_menuPrewarming && _prewarmSelection == key) return;
+  ResetSession(false);
+  _prewarmHardFailure = false;
+  if (!GetNexoraEnabled()) throw std::runtime_error("Nexora is disabled in its configuration");
+  LoadAssets();
+  if (!HasQuestShaderAssets()) throw std::runtime_error(QuestShaderAssetFailure());
+  EnsureBehaviour();
+  _menuPrewarming = true;
+  _prewarmSelection = key;
+  try {
+    auto* dome = EnsureDome("custom-video");
+    if (!dome) throw std::runtime_error("Could not create custom video projection");
+    UnityEngine::Object::DontDestroyOnLoad(dome->object);
+    dome->persistentRoot = true;
+    LoadExternalVideo(*dome, *video);
+    dome->prewarmed = true;
+    dome->pendingPlay = true;
+    dome->pendingInitialTime = std::max(0.0, static_cast<double>(video->offsetSeconds));
+    dome->pendingInitialTimeTracksSong = false;
+    dome->renderer->set_enabled(false);
+    SetPlayButtonBlocked(true, "Nexora: preparing your selected video. Custom does not copy or import it.");
+  } catch (...) {
+    _prewarmHardFailure = true;
+    SetPlayButtonBlocked(true, "Custom video is unavailable. Choose another video or use Normal map mode in Nexora.");
+    throw;
+  }
+}
+
+bool Runtime::PrepareExternalBeatmap(GlobalNamespace::BeatmapCallbacksController* callbackController) {
+  // Exact in-game identity is supplied by GameplayCoreInstaller, not guessed
+  // from whichever song the menu last displayed. This also supports OST data.
+  auto const* video = _externalSelection.ForLevel(_gameplayLevelId);
+  if (!video || _gameplayLevelId != _selectedLevelId || !callbackController) return false;
+  if (_externalPlaying && _callbackController == callbackController) return true;
+  BeginSession(callbackController);
+  if (!_lifecycle.IsActive()) return false;
+  auto* dome = EnsureDome("custom-video");
+  if (!dome) throw std::runtime_error("Could not create custom projection");
+  LoadExternalVideo(*dome, *video);
+  _externalPlaying = true;
+  PaperLogger.info("Nexora Custom playing verified level='{}' directly from original video location", _gameplayLevelId);
+  return true;
+}
+
 void Runtime::UpdatePrewarm() {
   if (!_focused || _applicationPaused || _prewarmHardFailure) return;
   bool ready = !_domes.empty();
@@ -929,6 +1033,7 @@ bool Runtime::PrepareBeatmap(
     GlobalNamespace::BeatmapCallbacksController* callbackController,
     float triggerTime, std::string_view source) {
   if (!std::isfinite(triggerTime)) triggerTime = 0.0f;
+  if (PrepareExternalBeatmap(callbackController)) return true;
   auto* customBeatmapData = GetCustomBeatmapData(callbackController);
   if (customBeatmapData == nullptr) return false;
   if (_currentBeatmapData == customBeatmapData && _callbackController == callbackController &&
@@ -969,7 +1074,8 @@ void Runtime::ReplayMissedEvents(float upToTime) {
 }
 
 void Runtime::TryPrepareSelectedBeatmapFromScene() {
-  if (!GetNexoraEnabled() || _selectedMapRoot.empty() ||
+  bool const external = _externalSelection.ForLevel(_gameplayLevelId) && _gameplayLevelId == _selectedLevelId;
+  if (!GetNexoraEnabled() || (_selectedMapRoot.empty() && !external) || _externalPlaying ||
       _currentBeatmapData != nullptr || _nextGameplayProbeFrame == -2) {
     return;
   }
@@ -981,6 +1087,7 @@ void Runtime::TryPrepareSelectedBeatmapFromScene() {
       UnityEngine::Object::FindObjectOfType<GlobalNamespace::BeatmapCallbacksUpdater*>();
   if (!Alive(updater) || updater->_beatmapCallbacksController == nullptr) return;
   auto* callbackController = updater->_beatmapCallbacksController;
+  if (external) { PrepareExternalBeatmap(callbackController); return; }
   auto* customBeatmapData = GetCustomBeatmapData(callbackController);
   if (customBeatmapData == nullptr) return;
   bool const containsNexoraEvents = std::any_of(
@@ -1073,6 +1180,12 @@ void Runtime::HandleCustomEvent(
   }
 
   bool const isNexoraEvent = IsNexoraEvent(customEventData->type);
+  if (_externalSelection.ForLevel(_gameplayLevelId) && _gameplayLevelId == _selectedLevelId) {
+    PrepareExternalBeatmap(callbackController);
+    // Custom replaces only Nexora's authored media/events for this explicit
+    // selection. Other mods' Vivify/Noodle callbacks still run normally.
+    return;
+  }
   // A later Vivify event may be the first callback Nexora sees after missing
   // this required map's beat-zero setup. Use it as a preparation signal only
   // for a difficulty that actually requires Nexora. This keeps unrelated
@@ -1476,7 +1589,7 @@ std::string Runtime::ResolveMediaUrl(rapidjson::Value const& json) const {
 }
 
 void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
-                        float eventTime) {
+                        float eventTime, std::string const& userSelectedPath) {
   if (!Alive(dome.video)) throw std::runtime_error("dome VideoPlayer was destroyed");
   auto queuedAnimation = dome.animation;
   bool const animationArrivedFirst = queuedAnimation.active &&
@@ -1485,7 +1598,11 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
   // and never retain a previous video's depth layout on a later LoadVideo.
   RgbdVideo rgbd;
   std::vector<CapturePose> poses;
-  std::string url = ResolveMediaUrl(json);
+  std::string url = userSelectedPath.empty() ? ResolveMediaUrl(json)
+      : ReadableExternalVideo(userSelectedPath).string();
+  float const projectionCorrection = ProjectionCorrection(
+      ReadString(json, "azimuthConvention").value_or(""),
+      ReadFloat(json, "yaw").value_or(dome.visual.yaw));
   std::string fallbackUrl;
   auto const depth = json.FindMember("rgbd");
   if (depth != json.MemberEnd()) {
@@ -1561,6 +1678,7 @@ void Runtime::LoadVideo(DomeLayer& dome, rapidjson::Value const& json,
   dome.rgbd.enabled = false;
   if (rgbd.enabled) dome.visual.projection = 0.0f;
   ApplyDomeJson(dome.visual, dome, json);
+  dome.projectionCorrection = projectionCorrection;
   if (previousRgbd != rgbd.enabled || (rgbd.enabled && dome.rgbd.quality != rgbd.quality)) {
     int const resolution = GetDomeResolution();
     auto* replacement = CreateProceduralDomeMesh(
@@ -1921,7 +2039,9 @@ void Runtime::ApplyDomeVisual(DomeLayer& dome) {
     }
     auto pose = SampleCapturePose(dome.capturePoses, decodedTime);
     auto captureRotation = UnityEngine::Quaternion(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]);
-    transform->set_rotation(UnityEngine::Quaternion::op_Multiply(rootRotation, captureRotation));
+    auto mediaRotation = UnityEngine::Quaternion::Euler(0, dome.projectionCorrection, 0);
+    transform->set_rotation(UnityEngine::Quaternion::op_Multiply(rootRotation,
+        UnityEngine::Quaternion::op_Multiply(captureRotation, mediaRotation)));
     if (dome.rgbd.enabled) {
       auto p = UnityEngine::Quaternion::op_Multiply(rootRotation,
           UnityEngine::Vector3(pose.position[0]*dome.rgbd.worldScale, pose.position[1]*dome.rgbd.worldScale, pose.position[2]*dome.rgbd.worldScale));
@@ -2643,6 +2763,7 @@ void Runtime::ResetSession(bool sceneTransition) {
   DestroyAllDomes(canTouchUnity);
   _callbackController = nullptr;
   _currentBeatmapData = nullptr;
+  _externalPlaying = false;
   _processedNexoraEvents.clear();
   _preparingBeatmap = false;
   _audioController = nullptr;
@@ -2668,6 +2789,7 @@ void Runtime::FinishPendingReset() {
 void Runtime::HandleScenesWillDismiss() {
   // This hook runs before GameScenesManager returns its transition coroutine,
   // so the gameplay objects and decoder delegates are still valid to detach.
+  _gameplayLevelId.clear();
   if (!_menuPrewarming) ResetSession(false);
 }
 

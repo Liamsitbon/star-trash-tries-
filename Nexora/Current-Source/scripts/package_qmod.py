@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_VERSION = "2.0.0-rc.1"
+MOD_VERSION = "2.0.0-rc.2"
 TARGET = "1.40.8_7379"
 UNITY_VERSION = "2021.3.16f1"
 OUTPUT = ROOT / "release" / f"Nexora-Quest-{MOD_VERSION}.qmod"
@@ -41,7 +41,7 @@ EXPECTED_FILE_COPIES = {
 EXPECTED_NEEDED = {
     "liblog.so", "libbeatsaber-hook.so", "libcustom-json-data.so",
     "libcustom-types.so", "libpaper2_scotland2.so", "libsl2.so",
-    "libsongcore.so", "libm.so", "libdl.so", "libc.so",
+    "libsongcore.so", "libbsml.so", "libm.so", "libdl.so", "libc.so",
 }
 
 

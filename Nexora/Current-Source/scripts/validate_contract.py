@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QPM_CONFIG_VERSION = "0.4.0"
-MOD_VERSION = "2.0.0-rc.1"
+MOD_VERSION = "2.0.0-rc.2"
 TARGET = "1.40.8_7379"
 UNITY_VERSION = "2021.3.16f1"
 ASSET_BUNDLE = ROOT / "assets/nexoraassets.android"
@@ -88,7 +88,7 @@ def main() -> int:
     qpm_dependencies = dependency_versions(qpm.get("dependencies", []), "versionRange")
     for identifier in (
         "beatsaber-hook", "custom-types", "custom-json-data", "songcore",
-        "paper2_scotland2",
+        "paper2_scotland2", "bsml",
     ):
         if manifest_dependencies.get(identifier) != qpm_dependencies.get(identifier):
             fail(f"dependency range mismatch for {identifier}")

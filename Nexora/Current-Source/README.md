@@ -2,9 +2,21 @@
 
 Nexora 1 and the Nexora 2 prototype now share the normal `nexora` package.
 Install only one Nexora QMOD. Existing RGB maps do not require depth files.
-Version 2.0.0-rc.1 preserves the Alpha renderer; unification is not a claim
-that RGBD, every map, or the reported one-off selection crash is verified.
+Version 2.0.0-rc.2 adds the optional external-video menu and a conventional
+360 forward-orientation correction. It preserves the RGBD/Direct Video shader.
+This is not a claim that the Quest menu, RGBD, every map, or the reported
+one-off selection crash is verified.
 See [the unified release evidence](../../docs/nexora-unified.md).
+
+## Optional external video menu
+
+**Mod Settings → Nexora** offers **Custom: use in place + open song**.
+Select a video and an installed song, then use the normal difficulty/Play
+screen. The video is read from its original location without import/copy/move.
+**Copy to map** is a separate, confirmed action that retains the original and
+never overwrites existing files. **Normal map mode** clears the session-only
+binding. The existing map-embedded DAT/video path remains supported.
+See [external-video behavior and limits](docs/EXTERNAL_VIDEO.md).
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.
@@ -38,8 +50,9 @@ normal effects path is still known to produce white on the tested device.
 - The map never ships a Nexora sphere prefab. `Nexora.LoadVideo` resolves a
   safe path inside the selected custom-map directory and creates/configures
   the runtime dome automatically.
-- Absolute paths, `..`, missing files and remote URLs are rejected. Media is
-  not read from a shared mod folder.
+- For authored DAT events, absolute paths, `..`, missing files and remote URLs
+  remain rejected. The separate, explicit local-user selection path accepts
+  readable absolute file paths; it is not accessible through map JSON.
 
 This preserves Nexora's purpose: expensive Vivify scenery is pre-rendered to
 video, not rebuilt as full live 3D. Notes, sabers and selected interactive
@@ -115,7 +128,7 @@ python3 ./scripts/package_qmod.py
 python3 ./scripts/package_source.py
 ```
 
-Output: `release/Nexora-Quest-2.0.0-rc.1.qmod`. The package script requires a real
+Output: `release/Nexora-Quest-2.0.0-rc.2.qmod`. The package script requires a real
 Android UnityFS shader bundle, matching Unity-source provenance, AArch64 ELF
 shared object, an exact manifest/payload contract and a clean ZIP without PC or
 macOS payloads.

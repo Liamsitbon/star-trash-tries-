@@ -11,6 +11,7 @@
 #include "RgbdVideo.hpp"
 #include "CapturePose.hpp"
 #include "PerformanceWindow.hpp"
+#include "ExternalMedia.hpp"
 #include "GlobalNamespace/AudioTimeSyncController.hpp"
 #include "GlobalNamespace/BeatmapCallbacksController.hpp"
 #include "UnityEngine/AssetBundle.hpp"
@@ -136,6 +137,7 @@ struct DomeLayer {
   UnityEngine::Video::VideoPlayer_EventHandler* seekCompletedDelegate = nullptr;
   UnityEngine::Video::VideoPlayer_ErrorEventHandler* errorReceivedDelegate = nullptr;
   DomeVisual visual{};
+  float projectionCorrection = 0;
   RgbdVideo rgbd{};
   std::vector<CapturePose> capturePoses;
   std::string fallbackUrl;
@@ -184,6 +186,10 @@ public:
   void SetFocused(bool focused);
   void SetSelectedMapRoot(std::string mapRoot, bool requiresNexora);
   void PrewarmSelectedDifficulty(std::string const& characteristic, int difficulty);
+  void BindExternalVideo(ExternalVideo video);
+  void ClearExternalVideo();
+  ExternalVideo const* GetExternalVideo() const { return _externalSelection.Current(); }
+  void SetGameplayLevelId(std::string levelId);
   void HandleScenesWillDismiss();
   void HandleGameplayRestart();
   void OnBehaviourDestroyed(RuntimeBehaviour* behaviour);
@@ -200,6 +206,9 @@ private:
   bool PrepareBeatmap(GlobalNamespace::BeatmapCallbacksController* callbackController,
                       float triggerTime, std::string_view source);
   void TryPrepareSelectedBeatmapFromScene();
+  bool PrepareExternalBeatmap(GlobalNamespace::BeatmapCallbacksController* callbackController);
+  void PrewarmExternalVideo();
+  void LoadExternalVideo(DomeLayer& dome, ExternalVideo const& video);
   void ReplayMissedEvents(float upToTime);
   bool IsNexoraEvent(std::string_view type) const;
   rapidjson::Value const* EventJson(CustomJSONData::CustomEventData* eventData) const;
@@ -217,7 +226,8 @@ private:
   DomeLayer* EnsureDome(std::string const& id);
   void DestroyDome(std::string const& id, bool canTouchUnity = true);
   void DestroyAllDomes(bool canTouchUnity = true);
-  void LoadVideo(DomeLayer& dome, rapidjson::Value const& json, float eventTime);
+  void LoadVideo(DomeLayer& dome, rapidjson::Value const& json, float eventTime,
+                 std::string const& userSelectedPath = {});
   void PlayVideo(DomeLayer& dome, rapidjson::Value const& json, float eventTime);
   void PauseVideo(DomeLayer& dome);
   void StopVideo(DomeLayer& dome);
@@ -281,6 +291,12 @@ private:
   int _nextGameplayProbeFrame = -1;
   float _lastSongTime = -1.0f;
   std::string _selectedMapRoot;
+  std::string _selectedLevelId;
+  std::string _gameplayLevelId;
+  std::string _selectedCharacteristic;
+  int _selectedDifficulty = 0;
+  ExternalSelection _externalSelection;
+  bool _externalPlaying = false;
   std::unordered_set<CustomJSONData::CustomEventData*> _processedNexoraEvents;
   PerformanceWindow _performance;
 };

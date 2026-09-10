@@ -1,6 +1,7 @@
 #include "main.hpp"
 #include "NexoraRuntime.hpp"
 #include "VideoRenderPolicy.hpp"
+#include "ExternalMediaMenu.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -195,6 +196,7 @@ MOD_EXTERN_FUNC void late_load() noexcept {
     il2cpp_functions::Init();
     custom_types::Register::AutoRegister();
     Nexora::LateLoad();
+    Nexora::RegisterExternalMediaMenu();
   } catch (std::exception const& exception) {
     try {
       PaperLogger.error("Nexora late_load failed safely: {}", exception.what());

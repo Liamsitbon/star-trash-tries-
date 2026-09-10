@@ -6,7 +6,7 @@
   "info": {
     "name": "Nexora",
     "id": "nexora",
-    "version": "2.0.0-rc.1",
+    "version": "2.0.0-rc.2",
     "url": "https://github.com/Liamsitbon/star-trash-tries-",
     "additionalData": {
       "overrideSoName": "libNexora.so",
@@ -29,6 +29,7 @@
     {"id": "custom-types", "versionRange": "^0.18.4", "additionalData": {"includeQmod": true}},
     {"id": "custom-json-data", "versionRange": "^0.24.5", "additionalData": {}},
     {"id": "songcore", "versionRange": "^1.1.26", "additionalData": {"includeQmod": true}},
+    {"id": "bsml", "versionRange": "^0.4.55", "additionalData": {"includeQmod": true}},
     {"id": "config-utils", "versionRange": "^2.0.3", "additionalData": {}},
     {"id": "scotland2", "versionRange": "^0.1.7", "additionalData": {"includeQmod": false}},
     {"id": "paper2_scotland2", "versionRange": "^4.8.0", "additionalData": {}}

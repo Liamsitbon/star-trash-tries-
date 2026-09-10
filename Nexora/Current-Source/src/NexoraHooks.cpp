@@ -5,6 +5,8 @@
 
 #include "GlobalNamespace/GamePause.hpp"
 #include "GlobalNamespace/GameScenesManager.hpp"
+#include "GlobalNamespace/GameplayCoreInstaller.hpp"
+#include "GlobalNamespace/GameplayCoreSceneSetupData.hpp"
 #include "GlobalNamespace/PauseController.hpp"
 #include "GlobalNamespace/PauseMenuManager.hpp"
 #include "GlobalNamespace/ScenesTransitionSetupDataSO.hpp"
@@ -66,6 +68,17 @@ MAKE_HOOK_MATCH(GamePause_Resume, &GlobalNamespace::GamePause::Resume, void,
   });
 }
 
+MAKE_HOOK_MATCH(GameplayCoreInstaller_InstallBindings,
+                &GlobalNamespace::GameplayCoreInstaller::InstallBindings, void,
+                GlobalNamespace::GameplayCoreInstaller* self) {
+  RunNexoraHookBoundary("GameplayCoreInstaller::InstallBindings", [&] {
+    auto* setup = self ? self->_sceneSetupData : nullptr;
+    Nexora::Runtime::Instance().SetGameplayLevelId(
+        setup ? std::string(setup->beatmapKey.levelId) : "");
+  });
+  GameplayCoreInstaller_InstallBindings(self);
+}
+
 MAKE_HOOK_MATCH(
     GameScenesManager_ScenesTransitionCoroutine,
     &GlobalNamespace::GameScenesManager::ScenesTransitionCoroutine,
@@ -99,6 +112,7 @@ void LateLoad() {
   // fails, Scotland2's outer late_load boundary leaves Nexora unavailable
   // instead of accepting a map with an incomplete lifecycle.
   INSTALL_HOOK(PaperLogger, GameScenesManager_ScenesTransitionCoroutine);
+  INSTALL_HOOK(PaperLogger, GameplayCoreInstaller_InstallBindings);
   INSTALL_HOOK(PaperLogger, PauseController_Pause);
   INSTALL_HOOK(PaperLogger, PauseMenuManager_RestartButtonPressed);
   INSTALL_HOOK(PaperLogger, PauseController_HandlePauseMenuManagerDidFinishResumeAnimation);

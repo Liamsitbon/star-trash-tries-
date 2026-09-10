@@ -43,3 +43,8 @@ echo "Nexora direct-video default and diagnostic override policy test passed"
   -o "$NEXORA_TEST_DIR/depth_projection_test"
 "$NEXORA_TEST_DIR/depth_projection_test"
 echo "Nexora 2 region depth, quality and capture-pose tests passed"
+
+"$NEXORA_HOST_CXX" -std=c++20 -Wall -Wextra -Werror -pedantic \
+  -I"$NEXORA_ROOT/include" "$NEXORA_ROOT/src/ExternalMedia.cpp" \
+  "$NEXORA_ROOT/tests/external_media_test.cpp" -o "$NEXORA_TEST_DIR/external_media_test"
+"$NEXORA_TEST_DIR/external_media_test"

@@ -32,6 +32,18 @@ Projection aliases are `mono`; `topBottom`, `overUnder`, `tb`, `ou`; and
 `additive`. `media` is map-relative and normally
 `Nexora/Media/world-360.mp4`.
 
+`Nexora.LoadVideo` also accepts `azimuthConvention`. `center-forward` rotates
+the media basis 180 degrees so the horizontal centre of a conventional 360
+video faces +Z. `u0-forward` preserves the original U=0-at-+Z mesh convention,
+used by NexoraCapture. This basis correction is separate from animated root
+`yaw`, capture-pose rotation and position; it never flips the image vertically.
+
+Without this field, conventional centre-forward is the default, except for
+an initial exact +/-180-degree yaw workaround in older maps, which is kept
+without adding a second half turn. Authors with an intentional 180-degree
+scene rotation should specify the convention explicitly. The menu's external
+video path uses explicit `center-forward` plus a user-adjustable extra yaw.
+
 ## Camera events
 
 `Nexora.SetCameraEffect` applies immediately.

@@ -5,10 +5,10 @@
   "id": "nexora",
   "modloader": "Scotland2",
   "author": "Liam Sitbon",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-rc.2",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "Unified Nexora: RGB-only 360 compatibility, menu decoder prewarm and optional synchronized RGBD regional parallax. Replaces earlier Nexora including Alpha; install only one nexora QMOD. RGBD Quest validation is pending.",
+  "description": "Nexora: map-embedded RGB/RGBD plus optional in-place external video selection, installed-song menu and explicit copy-to-map. Corrects conventional 360 forward orientation. Quest menu/playback validation is pending; install only one nexora QMOD.",
   "dependencies": [
     {
       "version": "^6.4.2",
@@ -29,6 +29,11 @@
       "version": "^1.1.26",
       "id": "songcore",
       "downloadIfMissing": "https://github.com/raineaeternal/Quest-SongCore/releases/download/v1.1.26/SongCore.qmod"
+    },
+    {
+      "version": "^0.4.55",
+      "id": "bsml",
+      "downloadIfMissing": "https://github.com/bsq-ports/Quest-BSML/releases/download/v0.4.55/BSML.qmod"
     },
     {
       "version": "^4.8.0",

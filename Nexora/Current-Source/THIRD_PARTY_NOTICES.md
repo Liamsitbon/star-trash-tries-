@@ -19,5 +19,10 @@ Nexora.
 
 Runtime dependencies are packaged or downloaded under their own licenses:
 beatsaber-hook, bs-cordl, custom-types, CustomJSONData, SongCore, Scotland2,
-Paper2 and config-utils. Their upstream notices and package metadata remain
+Paper2, Quest BSML and config-utils. Their upstream notices and package metadata remain
 authoritative.
+
+The external-file browser, explicit exclusive-copy operation and song binding
+are independent Nexora implementations. UI creation uses the public Quest BSML
+API; song metadata and selection events use SongCore. No PC Cinema source or
+media importer was copied into this feature.

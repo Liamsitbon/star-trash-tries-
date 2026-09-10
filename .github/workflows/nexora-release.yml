@@ -102,7 +102,7 @@ jobs:
             gh release create "$RELEASE_TAG" dist/*.qmod dist/*.tar.gz dist/SHA256SUMS \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --title "Nexora $MOD_VERSION — Unified RGB + optional RGBD · Quest 1.40.8_7379" \
+              --title "Nexora $MOD_VERSION — Custom video + 360 forward · Quest 1.40.8_7379" \
               --notes-file docs/nexora-unified.md \
               --prerelease
           fi
