@@ -11,8 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "release" / "Nexora-2.0.0-alpha.1-source-and-arm64-core.zip"
-PREFIX = "Nexora-2.0.0-alpha.1-source-and-arm64-core"
+OUTPUT = ROOT / "release" / "Nexora-2.0.0-rc.1-source-and-arm64-core.zip"
+PREFIX = "Nexora-2.0.0-rc.1-source-and-arm64-core"
 FIXED_TIME = (2026, 8, 20, 0, 0, 0)
 ROOT_FILES = {
     "CMakeLists.txt", "extern.cmake", "qpm_defines.cmake", "qpm.json",

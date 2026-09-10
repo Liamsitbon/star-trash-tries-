@@ -1,14 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/Lauriethefish/QuestPatcher.QMod/refs/heads/main/QuestPatcher.QMod/Resources/qmod.schema.json",
   "_QPVersion": "1.2.0",
-  "name": "Nexora 2 Alpha (Experimental)",
+  "name": "Nexora",
   "id": "nexora",
   "modloader": "Scotland2",
   "author": "Liam Sitbon",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-rc.1",
   "packageId": "com.beatgames.beatsaber",
   "packageVersion": "1.40.8_7379",
-  "description": "EXPERIMENTAL replacement, not a second co-installed mod. Nexora 0.3.5 remains recommended. Menu video prewarm and optional packed RGBD regional parallax. Quest runtime validation pending.",
+  "description": "Unified Nexora: RGB-only 360 compatibility, menu decoder prewarm and optional synchronized RGBD regional parallax. Replaces earlier Nexora including Alpha; install only one nexora QMOD. RGBD Quest validation is pending.",
   "dependencies": [
     {
       "version": "^6.4.2",

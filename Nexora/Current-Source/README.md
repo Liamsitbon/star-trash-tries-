@@ -1,9 +1,10 @@
-# Nexora 2.0 Alpha — experimental Quest prototype
+# Nexora — unified RGB / optional RGBD Quest mod
 
-**Nexora 0.3.5 remains recommended.** This branch is an experimental replacement,
-not a second mod to install alongside it. Headset validation is pending.
-See [Alpha contract and evidence](https://github.com/Liamsitbon/star-trash-tries-/blob/nexora-2-alpha/docs/nexora2-alpha.md) for depth,
-startup preparation, fallback, quality levels and known limits.
+Nexora 1 and the Nexora 2 prototype now share the normal `nexora` package.
+Install only one Nexora QMOD. Existing RGB maps do not require depth files.
+Version 2.0.0-rc.1 preserves the Alpha renderer; unification is not a claim
+that RGBD, every map, or the reported one-off selection crash is verified.
+See [the unified release evidence](../../docs/nexora-unified.md).
 
 Nexora is a separate Quest mod for map-synchronised pre-rendered 360° worlds.
 It is not Vivify and has no dependency on Synapse Server.
@@ -114,7 +115,7 @@ python3 ./scripts/package_qmod.py
 python3 ./scripts/package_source.py
 ```
 
-Output: `release/Nexora-Quest-0.3.5.qmod`. The package script requires a real
+Output: `release/Nexora-Quest-2.0.0-rc.1.qmod`. The package script requires a real
 Android UnityFS shader bundle, matching Unity-source provenance, AArch64 ELF
 shared object, an exact manifest/payload contract and a clean ZIP without PC or
 macOS payloads.
