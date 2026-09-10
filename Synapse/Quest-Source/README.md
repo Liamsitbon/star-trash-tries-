@@ -57,6 +57,14 @@ no personal upstream appsettings, Windows sample bundles or maps are uploaded.
   StopLevel cancels prepared transitions. A new scheduled start can prepare again.
 - Upstream's InvalidateScores refreshes leaderboard data; it does not erase a
   submission acknowledgement. Session restart does clear the old session's scores.
+- Owned per-map gameplay plans retain all thirteen named upstream modifiers,
+  case-insensitive names, defined numeric enum values, null/false ruleset behavior,
+  handedness/color-override permissions and resubmission. `noEnergy` stays separate
+  from the NoFail gameplay-score modifier and never leaks into a later plan.
+- Division/difficulty selection rejects missing keys instead of indexing past an
+  array. Download version selection uses upstream's exact comma-list membership,
+  not a 1.40.x prefix. Bundle selection separates Android-tagged candidates from
+  untagged candidates needing platform inspection; neither is auto-loaded.
 
 Host CTest, 10,000 malformed inputs under ASan/UBSan, .NET oracle comparison and
 Android ARM64 compilation passed locally. No real server connection, real auth,
@@ -67,6 +75,11 @@ thread interleavings, not a proof of all possible races or headset behavior.
 The session suite additionally passed under ASan/UBSan: all server opcodes,
 duplicate authentication ACKs, pre-auth rejection, stalled-UI Pong timestamps,
 same-index map replacement, stale completions, stop/restart and full notice queues.
+The gameplay-plan suite passed on the host, and the session/gameplay components
+compiled as Android AArch64 objects. Plans do not yet apply Beat Saber IL2CPP
+settings, resolve SongCore levels or install the `noEnergy` hook. Heck map settings
+must retain higher precedence when the future adapter applies a plan. Unknown
+modifier spellings are reported as unapplied, not interpreted as another feature.
 
 ### Session adapter contract
 
