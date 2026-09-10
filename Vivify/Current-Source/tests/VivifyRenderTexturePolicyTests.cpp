@@ -34,7 +34,7 @@ int main() {
   assert(ScaledDimension(2048,0,8192)==2048);
   assert(ScaledDimension(2048,std::numeric_limits<float>::max(),8192)==1);
   assert(ScaledDimension(-1,2,8192)==1);
-  assert(ScaledDimension(INT32_MAX,2,8192)==4096);
+  assert(ScaledDimension(std::numeric_limits<int>::max(),2,8192)==4096);
   assert(ScaledDimension(10,1,0)==1);
   std::cout<<"PASS RT format domain and finite-dimension policy\n";
 }
