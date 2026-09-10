@@ -6,7 +6,7 @@
   "info": {
     "name": "NE Fixed Add-on",
     "id": "ne-fixed",
-    "version": "0.1.0-rc.1",
+    "version": "0.1.0-rc.2",
     "url": "https://github.com/Liamsitbon/star-trash-tries-",
     "additionalData": {"overrideSoName": "libNEFixed.so", "cmake": true}
   },

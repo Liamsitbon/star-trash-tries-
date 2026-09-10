@@ -41,8 +41,10 @@ jobs:
 
       - name: Select Android NDK 27.3
         run: |
-          sdkmanager "ndk;27.3.13750724"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+          ne_addon_ndk="$ANDROID_HOME/ndk/27.3.13750724"
+          test -f "$ne_addon_ndk/build/cmake/android.toolchain.cmake"
+          test -x "$ne_addon_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+          echo "ANDROID_NDK_HOME=$ne_addon_ndk" >> "$GITHUB_ENV"
 
       - name: Host tests and ownership boundary
         working-directory: NE-Fixed/Addon-Source

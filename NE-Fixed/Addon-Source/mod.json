@@ -3,7 +3,7 @@
   "_QPVersion": "1.2.0",
   "name": "NE Fixed Add-on",
   "id": "ne-fixed",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "author": "Liam Sitbon and Quest port contributors",
   "modloader": "Scotland2",
   "packageId": "com.beatgames.beatsaber",

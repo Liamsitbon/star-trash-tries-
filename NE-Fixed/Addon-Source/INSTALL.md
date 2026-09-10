@@ -1,4 +1,4 @@
-# NE Fixed Add-on 0.1.0-rc.1
+# NE Fixed Add-on 0.1.0-rc.2
 
 An independent, limited-scope release candidate for **Beat Saber Quest 1.40.8_7379 / Scotland2**. Not a standalone Noodle Extensions implementation and not a complete migration of the legacy NE-Fixed 1.8.15 fork. No headset playtest has been completed for this package.
 
