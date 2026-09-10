@@ -1,4 +1,4 @@
-# Synapse Quest port — protocol, models and transport, not a playable mod
+# Synapse Quest port — protocol, transport and session core, not a playable mod
 
 Target: Beat Saber Quest standalone **1.40.8_7379**. Branch: `synapse-quest-port`.
 This is **not** the full Synapse port, not an installable QMOD, and not a replacement
@@ -42,6 +42,21 @@ no personal upstream appsettings, Windows sample bundles or maps are uploaded.
   a missing reply's timeout forever.
 - Exact-artifact/generation readiness gate: an old download callback cannot mark
   the new map ready or trigger scene teardown before verified preparation.
+- Owner-thread session reducer connects all fourteen decoded server messages to
+  typed notices, immutable status snapshots, counts, acknowledged scores and the
+  thirty-sample clock. It does not call Unity or open a connection.
+- Session epoch plus transport connection identity reject old messages, auth
+  callbacks and map completions even if a replacement transport reuses an id.
+  Same-index changes to a map's download/hash/key/ruleset invalidate preparation.
+- Authenticated state requires an explicit submission marker plus the current
+  server ACK; repeated submissions cannot extend the eight-second response
+  deadline. There is no fake token/provider. A real Quest auth adapter, retry
+  scheduler, secure deployment and authenticated settings sends remain pending.
+- Sixty-four owned notices, atomic status change sets and out-of-band terminal
+  state prevent queue overflow from leaving partially applied transitions.
+  StopLevel cancels prepared transitions. A new scheduled start can prepare again.
+- Upstream's InvalidateScores refreshes leaderboard data; it does not erase a
+  submission acknowledgement. Session restart does clear the old session's scores.
 
 Host CTest, 10,000 malformed inputs under ASan/UBSan, .NET oracle comparison and
 Android ARM64 compilation passed locally. No real server connection, real auth,
@@ -49,6 +64,33 @@ gameplay transition or headset behavior was tested. The ARM64 output is a static
 component library, **not** a mod to sideload.
 The host transport suite also passed under ThreadSanitizer. This covers exercised
 thread interleavings, not a proof of all possible races or headset behavior.
+The session suite additionally passed under ASan/UBSan: all server opcodes,
+duplicate authentication ACKs, pre-auth rejection, stalled-UI Pong timestamps,
+same-index map replacement, stale completions, stop/restart and full notice queues.
+
+### Session adapter contract
+
+The future Quest adapter owns `Session` on the Unity main thread. Once transport
+reports a new connection, call `Begin(connection)` and retain its returned identity
+in every asynchronous callback. Capture `TransportClockSeconds()` immediately
+before enqueueing a real auth frame; only if `Send` accepts it, pass that timestamp
+to `AuthenticationSent`. The reducer stores no credentials and does not send auth.
+Provider acquisition needs its own cancellation/timeout policy.
+
+Drain received messages with their original worker timestamps before calling
+`Tick`. Terminal transport status must call `Close(..., TransportLost)`. A closed
+or overflowing session must in turn stop the transport. After an authenticated
+notice, the adapter sends opt-in chatter/division settings and schedules pings.
+Failure to queue any outbound packet must be surfaced, not silently retried into
+another connection. All server-supplied UI strings are untrusted text, not markup.
+
+`BeginPreparation(identity, revision, artifact)` returns a one-use generation
+ticket. The future downloader must establish the exact artifact identity, verify
+the download/decryption/extraction and resolve the requested SongCore difficulty
+before `CompletePreparation(ticket, true)`. The boolean is a caller contract, not
+a file verifier implemented by this core. Immediately before any scene teardown,
+recheck `CanTransition(ticket)` and the current server schedule/division. Receiving
+an earlier `MapPrepared` notice is not permission to start a now-obsolete map.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
@@ -76,7 +118,8 @@ the downloaded bundle before loading it. Existing PC listing fields are retained
 ## Remaining full-port inventory — not waived
 
 1. Cancellable hostname DNS adapter, real Quest platform authentication, secure
-   backend compatibility policy, session/auth orchestration and failure UI.
+   backend compatibility policy, real auth/retry/settings orchestration and failure
+   UI. The portable session reducer above is implemented, not yet wired to Quest.
 2. Quest BSML menu, event banner/takeover, countdown, divisions, chat/profanity/
    opt-out, join/leave/ban messages, notifications, leaderboards and moderation UI.
 3. Verified download/cache identity, encrypted map AES/MD5 compatibility, bounded

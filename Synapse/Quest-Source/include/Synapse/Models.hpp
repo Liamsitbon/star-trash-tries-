@@ -6,16 +6,24 @@
 #include <variant>
 
 namespace Synapse::Quest::Models {
-struct PlayerScore { std::int32_t score=0; float percentage=0; };
+struct PlayerScore {
+  std::int32_t score=0; float percentage=0;
+  bool operator==(PlayerScore const&) const = default;
+};
 struct Ruleset {
   std::optional<bool> allowOverrideColors, allowLeftHand, allowResubmission;
   // Missing means the upstream default []; explicit null stays null.
   std::optional<std::vector<std::string>> modifiers=std::vector<std::string>{};
+  bool operator==(Ruleset const&) const = default;
 };
-struct Key { std::string characteristic; std::int32_t difficulty=0; };
+struct Key {
+  std::string characteristic; std::int32_t difficulty=0;
+  bool operator==(Key const&) const = default;
+};
 struct Download {
   std::string gameVersion, url, hash;
   std::optional<std::string> key;
+  bool operator==(Download const&) const = default;
 };
 struct Map {
   std::string name;
@@ -23,6 +31,7 @@ struct Map {
   std::optional<Ruleset> ruleset;
   std::vector<Key> keys;
   std::vector<Download> downloads;
+  bool operator==(Map const&) const = default;
 };
 struct InvalidStage {};
 struct IntroStage {
