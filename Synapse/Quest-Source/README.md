@@ -1,4 +1,4 @@
-# Synapse Quest port — native core milestone, not a playable mod
+# Synapse Quest port — protocol, models and transport, not a playable mod
 
 Target: Beat Saber Quest standalone **1.40.8_7379**. Branch: `synapse-quest-port`.
 This is **not** the full Synapse port, not an installable QMOD, and not a replacement
@@ -16,8 +16,20 @@ no personal upstream appsettings, Windows sample bundles or maps are uploaded.
   int32/ushort/bool/IEEE float encoding, strict truncated/invalid input checks.
 - All nine client opcode layouts have byte-for-byte tests against an independent
   .NET BinaryWriter oracle, including Hebrew/emoji and long strings.
-- All fourteen server opcode payload layouts are decoded. Status/chat/leaderboard
-  JSON is retained verbatim for the future typed model/UI integration, not discarded.
+- All fourteen server opcode payload layouts are decoded. All original fields in
+  status/stages/maps/rulesets/chat/leaderboard/listing/lobby/takeover/required-mod
+  JSON have typed native models. Null/false/missing semantics are preserved.
+- Bounded JSON parsing (wire 16KiB, HTTP listing 1MiB, nesting 32), duplicate-key,
+  type, integer-range and nonfinite checks. Parser errors never echo source data.
+  Unknown JSON fields remain accepted; unknown stage types are rejected explicitly.
+- Native numeric IPv4/IPv6 TCP transport: nonblocking socket, worker-owned lifetime,
+  asynchronous cancellation, 5s connect timeout, 2s packet/write timeout, bounded
+  retries and 64-entry incoming/outgoing queues. No Unity calls on the worker.
+- Connection identity guards all sends; pending outgoing frames are cleared on
+  retry, never replayed into a new auth session. Server disconnect and malformed
+  packets are terminal; queue overflow is visible even when no more events fit.
+- Loopback tests cover fragmented/coalesced messages, bidirectional framing,
+  reconnect identity, cancellation, stalled headers, malformed data and overflow.
 - Fragmented/coalesced TCP stream decoder, including one-byte headers, timeout,
   poisoned-stream handling, and compatibility with old zero-padded PC packets.
 - Bounded owned-message queue with generation checks and explicit overflow signal;
@@ -28,7 +40,7 @@ no personal upstream appsettings, Windows sample bundles or maps are uploaded.
   the new map ready or trigger scene teardown before verified preparation.
 
 Host CTest, 10,000 malformed inputs under ASan/UBSan, .NET oracle comparison and
-Android ARM64 compilation passed locally. No server connection, real auth,
+Android ARM64 compilation passed locally. No real server connection, real auth,
 gameplay transition or headset behavior was tested. The ARM64 output is a static
 component library, **not** a mod to sideload.
 
@@ -40,12 +52,25 @@ python3 tests/compare_dotnet.py
 ```
 
 The oracle needs .NET 10, uses synthetic credentials and never opens a network
-connection. Native code requires C++20; it does not depend on a PC Unity DLL.
+connection. The transport tests open ephemeral loopback sockets only. Native code
+requires C++20; it does not depend on a PC Unity DLL. The JSON parser is vendored
+nlohmann/json 3.12.0, SHA-256-pinned with upstream MIT license/provenance retained.
+
+The wire transport retains upstream's **unencrypted TCP** compatibility. It has
+not been approved for sending real platform/session tokens over an untrusted
+network. A secure authenticated transport/deployment policy and real Quest auth
+remain integration requirements, not an always-authorized bypass. No credentials
+are requested by these tests and no connection is opened at library startup.
+
+Asset bundle listings without a `platform` tag are classified **unknown**, not
+automatically Android just because their game version matches. An explicit
+`platform: "android"` / `"quest"` tag helps selection but does not replace inspecting
+the downloaded bundle before loading it. Existing PC listing fields are retained.
 
 ## Remaining full-port inventory — not waived
 
-1. Cancellable TCP/DNS/reconnect transport, real Quest platform authentication,
-   listing/status JSON models, backend compatibility and failure reporting.
+1. Cancellable hostname DNS adapter, real Quest platform authentication, secure
+   backend compatibility policy, session/auth orchestration and failure UI.
 2. Quest BSML menu, event banner/takeover, countdown, divisions, chat/profanity/
    opt-out, join/leave/ban messages, notifications, leaderboards and moderation UI.
 3. Verified download/cache identity, encrypted map AES/MD5 compatibility, bounded

@@ -12,6 +12,7 @@ jobs:
       - name: Compile portable core and run bounded protocol tests
         working-directory: Synapse/Quest-Source
         run: |
+          echo 'aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63  third_party/nlohmann/json.hpp' | sha256sum --check
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           cmake --build build --parallel 2
           ctest --test-dir build --output-on-failure
