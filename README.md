@@ -48,6 +48,10 @@ Before using or building a component, check its project files and configuration 
 
 Nexora uses synchronized pre-rendered 360° video environments to create cinematic Beat Saber maps while reducing the amount of complex environment geometry that must be rendered in real time.
 
+It remains a standalone Quest mod, not a PC mod or an automatic Vivify-map converter. Ordinary RGB media stays supported; authored RGBD is optional and experimental. Where available, the external-video menu pairs a local video with an installed song without importing or moving it; copying to a map is a separate confirmed action.
+
+See the [Nexora overview and rendering limitations](./Nexora/Current-Source/README.md). In particular, the Direct Video path bypasses several shader effects, video frame rate is not headset refresh rate, and supported game versions/dependencies belong to each package's manifest and release notes rather than this overview.
+
 ## Development Notes
 
 When contributing or testing changes:
