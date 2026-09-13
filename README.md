@@ -46,10 +46,6 @@ Before using or building a component, check its project files and configuration 
 
 ## Nexora
 
-The official standalone Nexora source is maintained separately:
-
-[Nexora Official Source](https://github.com/Liamsitbon/Nexora-Official-Source)
-
 Nexora uses synchronized pre-rendered 360° video environments to create cinematic Beat Saber maps while reducing the amount of complex environment geometry that must be rendered in real time.
 
 ## Development Notes
